@@ -101,7 +101,14 @@ common common-lang
 
 library
   import:          common-lang
-  exposed-modules: HydraAuctionOnchain.Helpers
+  exposed-modules:
+    HydraAuctionOnchain.Helpers
+    HydraAuctionOnchain.MintingPolicies.Auction
+    HydraAuctionOnchain.Scripts
+    HydraAuctionOnchain.Types.AuctionInfo
+    HydraAuctionOnchain.Types.AuctionTerms
+    HydraAuctionOnchain.Validators.AuctionMetadata
+
   build-depends:
     , bytestring
     , data-default
