@@ -1,0 +1,4 @@
+/dist-newstyle/
+/.pre-commit-config.yaml
+/.direnv
+/.envrc

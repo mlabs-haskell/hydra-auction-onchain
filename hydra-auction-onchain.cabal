@@ -1,0 +1,130 @@
+cabal-version: 3.0
+name:          hydra-auction-onchain
+version:       0.1.0
+homepage:      https://github.com/mlabs-haskell/hydra-auction-onchain
+bug-reports:   https://github.com/mlabs-haskell/hydra-auction-onchain
+license:       Apache-2.0
+license-file:  LICENSE
+author:        MLabs
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/mlabs-haskell/hydra-auction-onchain
+  branch:   staging
+
+library pprelude
+  default-language: Haskell2010
+  build-depends:
+    , base
+    , plutarch
+
+  exposed-modules:  PPrelude
+  hs-source-dirs:   src
+
+common common-lang
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
+    -Wno-partial-type-signatures -Wincomplete-record-updates
+    -Wmissing-deriving-strategies -Wno-name-shadowing -Wunused-foralls
+    -fprint-explicit-foralls -fprint-explicit-kinds
+    -Wmissing-export-lists -Werror
+
+  mixins:
+    base hiding (Prelude),
+    pprelude (PPrelude as Prelude)
+
+  build-depends:
+    , base
+    , pprelude
+
+  default-extensions:
+    NoStarIsType
+    BangPatterns
+    BinaryLiterals
+    ConstrainedClassMethods
+    ConstraintKinds
+    DataKinds
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    EmptyCase
+    EmptyDataDecls
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    GADTSyntax
+    GeneralisedNewtypeDeriving
+    HexFloatLiterals
+    ImplicitPrelude
+    ImportQualifiedPost
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MonomorphismRestriction
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NamedWildCards
+    NumericUnderscores
+    OverloadedStrings
+    PartialTypeSignatures
+    PatternGuards
+    PolyKinds
+    PostfixOperators
+    QualifiedDo
+    RankNTypes
+    RelaxedPolyRec
+    ScopedTypeVariables
+    StandaloneDeriving
+    StandaloneKindSignatures
+    TraditionalRecordSyntax
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    ViewPatterns
+    OverloadedRecordDot
+
+  default-language:   Haskell2010
+
+library
+  import:          common-lang
+  exposed-modules: HydraAuctionOnchain.Helpers
+  build-depends:
+    , bytestring
+    , data-default
+    , liqwid-plutarch-extra
+    , plutarch
+    , plutarch-extra
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , ply-core
+    , ply-plutarch
+    , pretty-simple
+    , text
+
+  hs-source-dirs:  src
+
+executable hydra-auction-onchain-exe
+  import:         common-lang
+  main-is:        Main.hs
+  build-depends:
+    , hydra-auction-onchain
+    , optparse-applicative
+
+  other-modules:
+  hs-source-dirs: app
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
