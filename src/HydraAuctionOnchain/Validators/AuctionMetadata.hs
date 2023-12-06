@@ -23,14 +23,15 @@ instance DerivePlutusType PAuctionMetadataRedeemer where
   type DPTStrat _ = PlutusTypeData
 
 auctionMetadataValidator
-  :: ClosedTerm
+  :: Term
+      s
       ( PAuctionInfo
           :--> PAuctionMetadataRedeemer
           :--> PScriptContext
           :--> PUnit
       )
-auctionMetadataValidator =
-  phoistAcyclic $ plam $ \auctionInfo redeemer ctx ->
+auctionMetadataValidator = phoistAcyclic $
+  plam $ \auctionInfo redeemer ctx ->
     pmatch redeemer $ \case
       RemoveAuctionRedeemer _ -> P.do
         auctionCurrencySymbol <- plet $ pfield @"auctionId" # auctionInfo

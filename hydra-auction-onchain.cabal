@@ -107,7 +107,12 @@ library
     HydraAuctionOnchain.Scripts
     HydraAuctionOnchain.Types.AuctionInfo
     HydraAuctionOnchain.Types.AuctionTerms
+    HydraAuctionOnchain.Types.BidderInfo
+    HydraAuctionOnchain.Types.BidTerms
+    HydraAuctionOnchain.Types.Error
+    HydraAuctionOnchain.Types.StandingBidState
     HydraAuctionOnchain.Validators.AuctionMetadata
+    HydraAuctionOnchain.Validators.StandingBid
 
   build-depends:
     , bytestring

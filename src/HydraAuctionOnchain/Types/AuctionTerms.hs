@@ -10,6 +10,7 @@ import Plutarch.Api.V2
   , PValue
   )
 import Plutarch.DataRepr (PDataFields)
+import Ply.Plutarch (PlyArgOf)
 
 newtype PAuctionTerms (s :: S)
   = PAuctionTerms
@@ -36,3 +37,7 @@ newtype PAuctionTerms (s :: S)
 
 instance DerivePlutusType PAuctionTerms where
   type DPTStrat _ = PlutusTypeData
+
+data AuctionTerms
+
+type instance PlyArgOf PAuctionTerms = AuctionTerms

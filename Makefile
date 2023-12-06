@@ -7,7 +7,7 @@ build:
 	cabal v2-build all
 
 repl:
-	cabal v2-repl hydra-auction-onchain 
+	cabal v2-repl hydra-auction-onchain --ghc-options '-Wno-missing-import-lists'
 
 format:
 	fourmolu -m inplace ${hs-sources} && cabal-fmt -i ${cabal-sources} && nix run '.#nixFormat'
