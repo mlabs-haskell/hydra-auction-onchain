@@ -3,18 +3,22 @@
 module HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUnique
+  , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
   , pintervalFiniteClosedOpen
   , pserialise
   , putxoAddress
   ) where
 
+import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2
   ( PAddress
+  , PCurrencySymbol
   , PExtended (PFinite)
   , PInterval (PInterval)
   , PLowerBound (PLowerBound)
   , POutputDatum (POutputDatum)
+  , PTokenName
   , PTxInInfo
   , PTxInfo
   , PTxOut
@@ -39,6 +43,24 @@ pfindUnique :: PIsListLike l a => Term s ((a :--> PBool) :--> l a :--> PMaybe a)
 pfindUnique = phoistAcyclic $
   plam $ \predicate list ->
     pfromSingleton #$ pfilter # predicate # list
+
+pfindUniqueInputWithToken
+  :: Term
+      s
+      ( PCurrencySymbol
+          :--> PTokenName
+          :--> PTxInfo
+          :--> PMaybe PTxInInfo
+      )
+pfindUniqueInputWithToken = phoistAcyclic $
+  plam $ \cs tn txInfo ->
+    pfindUnique
+      # plam
+        ( \utxo ->
+            pvalueOf # (pfield @"value" #$ pfield @"resolved" # utxo) # cs # tn #== 1
+        )
+      #$ pfield @"inputs"
+      # txInfo
 
 pfindUniqueOutputWithAddress :: Term s (PAddress :--> PTxInfo :--> PMaybe PTxOut)
 pfindUniqueOutputWithAddress = phoistAcyclic $

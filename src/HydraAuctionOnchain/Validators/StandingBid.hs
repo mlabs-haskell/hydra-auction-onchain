@@ -4,17 +4,30 @@ module HydraAuctionOnchain.Validators.StandingBid
 
 import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
+  , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
   , putxoAddress
   )
-import HydraAuctionOnchain.MintingPolicies.Auction (standingBidTokenName)
+import HydraAuctionOnchain.MintingPolicies.Auction
+  ( auctionEscrowTokenName
+  , standingBidTokenName
+  )
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
 import HydraAuctionOnchain.Types.Error (ToErrorCode (toErrorCode), err, perrMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
+import HydraAuctionOnchain.Validators.AuctionEscrow (pisConcluding)
 import Plutarch.Api.V1.Value (pvalueOf)
-import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInInfo, PTxInfo, PTxOut)
+import Plutarch.Api.V2
+  ( PCurrencySymbol
+  , PScriptContext
+  , PScriptPurpose (PSpending)
+  , PTxInInfo
+  , PTxInfo
+  , PTxOut
+  )
 import Plutarch.Extra.Interval (pcontains)
-import Plutarch.Extra.ScriptContext (ptryOwnInput, ptxSignedBy)
+import Plutarch.Extra.Maybe (pmaybe)
+import Plutarch.Extra.ScriptContext (ptryFromRedeemer, ptryOwnInput, ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
 --------------------------------------------------------------------------------
@@ -97,6 +110,24 @@ instance ToErrorCode PStandingBid'MoveToHydra'Error where
       StandingBid'MoveToHydra'Error'IncorrectValidityInterval ->
         pconstant "StandingBid_MoveToHydra_02"
 
+-- ConcludeAuction -------------------------------------------------------------
+data PStandingBid'ConcludeAuction'Error (s :: S)
+  = StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput
+  | StandingBid'ConcludeAuction'Error'InvalidAuctionEscrowRedeemer
+  deriving stock (Generic)
+  deriving anyclass (PlutusType)
+
+instance DerivePlutusType PStandingBid'ConcludeAuction'Error where
+  type DPTStrat _ = PlutusTypeScott
+
+instance ToErrorCode PStandingBid'ConcludeAuction'Error where
+  toErrorCode = phoistAcyclic $
+    plam $ \err -> pmatch err $ \case
+      StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput ->
+        pconstant "StandingBid_ConcludeAuction_01"
+      StandingBid'ConcludeAuction'Error'InvalidAuctionEscrowRedeemer ->
+        pconstant "StandingBid_ConcludeAuction_02"
+
 --------------------------------------------------------------------------------
 -- Validator
 --------------------------------------------------------------------------------
@@ -133,7 +164,7 @@ standingBidValidator = phoistAcyclic $
       MoveToHydraRedeemer _ ->
         pcheckMoveToHydra # txInfo # auctionTerms
       ConcludeAuctionRedeemer _ ->
-        pcheckConcludeAuction
+        pcheckConcludeAuction # txInfo # auctionCs
 
 --------------------------------------------------------------------------------
 -- NewBid
@@ -213,8 +244,33 @@ pcheckMoveToHydra = phoistAcyclic $
 -- ConcludeAuction
 --------------------------------------------------------------------------------
 
-pcheckConcludeAuction :: Term s PUnit
-pcheckConcludeAuction = undefined
+pcheckConcludeAuction :: Term s (PTxInfo :--> PCurrencySymbol :--> PUnit)
+pcheckConcludeAuction = phoistAcyclic $
+  plam $ \txInfo auctionCs -> P.do
+    -- (StandingBid_ConcludeAuction_01)
+    -- There is an input that contains the auction escrow token.
+    auctionEscrowUtxo <-
+      plet $
+        perrMaybe
+          # pcon StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput
+          # (pfindUniqueInputWithToken # auctionCs # auctionEscrowTokenName # txInfo)
+
+    -- (StandingBid_ConcludeAuction_02)
+    -- The auction escrow input is being spent with the `BidderBuys` or
+    -- `SellerReclaims` redeemer. Implicitly, this means that the auction is
+    -- concluding with either the winning bidder buying the auction lot or the
+    -- seller reclaiming it.
+    redeemers <- plet $ pfield @"redeemers" # txInfo
+    auctionEscrowOref <- plet $ pfield @"outRef" # auctionEscrowUtxo
+    spendsAuctionEscrow <- plet $ pcon $ PSpending $ pdcons @"_0" # auctionEscrowOref # pdnil
+    auctionEscrowRedeemer <- plet $ ptryFromRedeemer # spendsAuctionEscrow # redeemers
+    err StandingBid'ConcludeAuction'Error'InvalidAuctionEscrowRedeemer $
+      pmaybe
+        # pcon PFalse
+        # plam (\redeemer -> pisConcluding # pfromData redeemer)
+        # auctionEscrowRedeemer
+
+    pcon PUnit
 
 --------------------------------------------------------------------------------
 -- Helpers
