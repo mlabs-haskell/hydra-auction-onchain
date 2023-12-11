@@ -2,13 +2,18 @@ module HydraAuctionOnchain.Validators.StandingBid
   ( standingBidValidator
   ) where
 
-import HydraAuctionOnchain.Helpers (pfindUniqueOutputWithAddress, putxoAddress)
+import HydraAuctionOnchain.Helpers
+  ( pdecodeInlineDatum
+  , pfindUniqueOutputWithAddress
+  , putxoAddress
+  )
 import HydraAuctionOnchain.MintingPolicies.Auction (standingBidTokenName)
-import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
+import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
 import HydraAuctionOnchain.Types.Error (ToErrorCode (toErrorCode), err, perrMaybe)
-import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState)
+import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
 import Plutarch.Api.V1.Value (pvalueOf)
-import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInInfo, PTxInfo)
+import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInInfo, PTxInfo, PTxOut)
+import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.ScriptContext (ptryOwnInput)
 import Plutarch.Monadic qualified as P
 
@@ -49,6 +54,10 @@ instance ToErrorCode PStandingBidError where
 
 data PStandingBid'NewBid'Error (s :: S)
   = StandingBid'NewBid'Error'MissingOwnOutput
+  | StandingBid'NewBid'Error'OwnOutputMissingToken
+  | StandingBid'NewBid'Error'FailedToDecodeNewBid
+  | StandingBid'NewBid'Error'InvalidNewBidState
+  | StandingBid'NewBid'Error'IncorrectValidityInterval
   deriving stock (Generic)
   deriving anyclass (PlutusType)
 
@@ -60,6 +69,14 @@ instance ToErrorCode PStandingBid'NewBid'Error where
     plam $ \err -> pmatch err $ \case
       StandingBid'NewBid'Error'MissingOwnOutput ->
         pconstant "StandingBid_NewBid_01"
+      StandingBid'NewBid'Error'OwnOutputMissingToken ->
+        pconstant "StandingBid_NewBid_02"
+      StandingBid'NewBid'Error'FailedToDecodeNewBid ->
+        pconstant "StandingBid_NewBid_03"
+      StandingBid'NewBid'Error'InvalidNewBidState ->
+        pconstant "StandingBid_NewBid_04"
+      StandingBid'NewBid'Error'IncorrectValidityInterval ->
+        pconstant "StandingBid_NewBid_05"
 
 --------------------------------------------------------------------------------
 -- Validator
@@ -76,15 +93,14 @@ standingBidValidator
           :--> PUnit
       )
 standingBidValidator = phoistAcyclic $
-  plam $ \auctionCs _auctionTerms _standingBidState redeemer ctx -> P.do
+  plam $ \auctionCs auctionTerms oldBidState redeemer ctx -> P.do
     ownInput <- plet $ ptryOwnInput # ctx
     txInfo <- plet $ pfield @"txInfo" # ctx
 
     -- (StandingBid01)
     -- The standing bid input should contain the standing bid token.
-    utxoValue <- plet $ pfield @"value" #$ pfield @"resolved" # ownInput
     err StandingBid'Error'OwnInputMissingToken $
-      (pvalueOf # utxoValue # auctionCs # standingBidTokenName) #== 1
+      ptxOutContainsStandingBidToken # auctionCs #$ pfield @"resolved" # ownInput
 
     -- (StandingBid02)
     -- There should be no tokens minted or burned.
@@ -93,24 +109,85 @@ standingBidValidator = phoistAcyclic $
       pfromData mintValue #== mempty
 
     pmatch redeemer $ \case
-      NewBidRedeemer _ -> checkNewBid # txInfo # ownInput
-      MoveToHydraRedeemer _ -> checkMoveToHydra
-      ConcludeAuctionRedeemer _ -> checkConcludeAuction
+      NewBidRedeemer _ ->
+        pcheckNewBid # txInfo # auctionCs # auctionTerms # ownInput # oldBidState
+      MoveToHydraRedeemer _ ->
+        pcheckMoveToHydra
+      ConcludeAuctionRedeemer _ ->
+        pcheckConcludeAuction
 
-checkNewBid :: Term s (PTxInfo :--> PTxInInfo :--> PUnit)
-checkNewBid = phoistAcyclic $
-  plam $ \txInfo ownInput -> P.do
+--------------------------------------------------------------------------------
+-- NewBid
+--------------------------------------------------------------------------------
+
+pcheckNewBid
+  :: Term
+      s
+      ( PTxInfo
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PTxInInfo
+          :--> PStandingBidState
+          :--> PUnit
+      )
+pcheckNewBid = phoistAcyclic $
+  plam $ \txInfo auctionCs auctionTerms ownInput oldBidState -> P.do
     -- (StandingBid_NewBid_01)
     -- The standing bid output should exist.
-    _ownOutput <-
+    ownOutput <-
       plet $
         perrMaybe
           # pcon StandingBid'NewBid'Error'MissingOwnOutput
           # (pfindUniqueOutputWithAddress # (putxoAddress # ownInput) # txInfo)
-    undefined
 
-checkMoveToHydra :: Term s PUnit
-checkMoveToHydra = undefined
+    -- (StandingBid_NewBid_02)
+    -- The standing bid output should contain the standing bid token.
+    err StandingBid'NewBid'Error'OwnOutputMissingToken $
+      ptxOutContainsStandingBidToken # auctionCs # ownOutput
 
-checkConcludeAuction :: Term s PUnit
-checkConcludeAuction = undefined
+    -- (StandingBid_NewBid_03)
+    -- The standing bid output's datum should be decodable
+    -- as a standing bid state.
+    newBidState <-
+      plet $
+        perrMaybe
+          # pcon StandingBid'NewBid'Error'FailedToDecodeNewBid
+          # (pdecodeInlineDatum # ownOutput)
+
+    -- (StandingBid_NewBid_04)
+    -- The transition from the old bid state to the new bid state
+    -- should be valid.
+    err StandingBid'NewBid'Error'InvalidNewBidState $
+      pvalidateNewBid # auctionCs # auctionTerms # oldBidState # newBidState
+
+    -- (StandingBid_NewBid_05)
+    -- The transaction validity should end before the bidding end time.
+    txInfoValidRange <- plet $ pfield @"validRange" # txInfo
+    err StandingBid'NewBid'Error'IncorrectValidityInterval $
+      pcontains # (pbiddingPeriod # auctionTerms) # txInfoValidRange
+
+    pcon PUnit
+
+--------------------------------------------------------------------------------
+-- MoveToHydra
+--------------------------------------------------------------------------------
+
+pcheckMoveToHydra :: Term s PUnit
+pcheckMoveToHydra = undefined
+
+--------------------------------------------------------------------------------
+-- ConcludeAuction
+--------------------------------------------------------------------------------
+
+pcheckConcludeAuction :: Term s PUnit
+pcheckConcludeAuction = undefined
+
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
+
+ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
+ptxOutContainsStandingBidToken = phoistAcyclic $
+  plam $ \auctionCs txOut ->
+    (pvalueOf # (pfield @"value" # txOut) # auctionCs # standingBidTokenName)
+      #== 1

@@ -20,3 +20,5 @@ data PBidderInfo (s :: S)
 
 instance DerivePlutusType PBidderInfo where
   type DPTStrat _ = PlutusTypeData
+
+instance PTryFrom PData PBidderInfo
