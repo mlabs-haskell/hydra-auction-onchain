@@ -14,7 +14,7 @@ import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateN
 import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInInfo, PTxInfo, PTxOut)
 import Plutarch.Extra.Interval (pcontains)
-import Plutarch.Extra.ScriptContext (ptryOwnInput)
+import Plutarch.Extra.ScriptContext (ptryOwnInput, ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
 --------------------------------------------------------------------------------
@@ -52,6 +52,7 @@ instance ToErrorCode PStandingBidError where
       StandingBid'Error'UnexpectedTokensMintedBurned ->
         pconstant "StandingBid02"
 
+-- NewBid ----------------------------------------------------------------------
 data PStandingBid'NewBid'Error (s :: S)
   = StandingBid'NewBid'Error'MissingOwnOutput
   | StandingBid'NewBid'Error'OwnOutputMissingToken
@@ -77,6 +78,24 @@ instance ToErrorCode PStandingBid'NewBid'Error where
         pconstant "StandingBid_NewBid_04"
       StandingBid'NewBid'Error'IncorrectValidityInterval ->
         pconstant "StandingBid_NewBid_05"
+
+-- MoveToHydra -----------------------------------------------------------------
+data PStandingBid'MoveToHydra'Error (s :: S)
+  = StandingBid'MoveToHydra'Error'MissingDelegateSignatures
+  | StandingBid'MoveToHydra'Error'IncorrectValidityInterval
+  deriving stock (Generic)
+  deriving anyclass (PlutusType)
+
+instance DerivePlutusType PStandingBid'MoveToHydra'Error where
+  type DPTStrat _ = PlutusTypeScott
+
+instance ToErrorCode PStandingBid'MoveToHydra'Error where
+  toErrorCode = phoistAcyclic $
+    plam $ \err -> pmatch err $ \case
+      StandingBid'MoveToHydra'Error'MissingDelegateSignatures ->
+        pconstant "StandingBid_MoveToHydra_01"
+      StandingBid'MoveToHydra'Error'IncorrectValidityInterval ->
+        pconstant "StandingBid_MoveToHydra_02"
 
 --------------------------------------------------------------------------------
 -- Validator
@@ -112,7 +131,7 @@ standingBidValidator = phoistAcyclic $
       NewBidRedeemer _ ->
         pcheckNewBid # txInfo # auctionCs # auctionTerms # ownInput # oldBidState
       MoveToHydraRedeemer _ ->
-        pcheckMoveToHydra
+        pcheckMoveToHydra # txInfo # auctionTerms
       ConcludeAuctionRedeemer _ ->
         pcheckConcludeAuction
 
@@ -172,8 +191,23 @@ pcheckNewBid = phoistAcyclic $
 -- MoveToHydra
 --------------------------------------------------------------------------------
 
-pcheckMoveToHydra :: Term s PUnit
-pcheckMoveToHydra = undefined
+pcheckMoveToHydra :: Term s (PTxInfo :--> PAuctionTerms :--> PUnit)
+pcheckMoveToHydra = phoistAcyclic $
+  plam $ \txInfo auctionTerms -> P.do
+    txInfoFields <- pletFields @["signatories", "validRange"] txInfo
+
+    -- (StandingBid_MoveToHydra_01)
+    -- The transaction should be signed by all the delegates.
+    delegates <- plet $ pfield @"delegates" # auctionTerms
+    err StandingBid'MoveToHydra'Error'MissingDelegateSignatures $
+      pall # plam (\sig -> ptxSignedBy # txInfoFields.signatories # sig) # delegates
+
+    -- (StandingBid_MoveToHydra_02)
+    -- The transaction validity should end before the bidding end time.
+    err StandingBid'MoveToHydra'Error'IncorrectValidityInterval $
+      pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
+
+    pcon PUnit
 
 --------------------------------------------------------------------------------
 -- ConcludeAuction
