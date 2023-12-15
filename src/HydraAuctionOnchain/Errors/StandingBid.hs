@@ -8,6 +8,7 @@ import HydraAuctionOnchain.Types.Error (ErrorCodePrefix (errorCodePrefix))
 data PStandingBidError (s :: S)
   = -- Common errors
     StandingBid'Error'MissingStandingBidInput
+  | StandingBid'Error'TooManyOwnScriptInputs
   | StandingBid'Error'OwnInputMissingToken
   | StandingBid'Error'UnexpectedTokensMintedBurned
   | -- NewBid errors

@@ -7,6 +7,7 @@ module HydraAuctionOnchain.Helpers
   , pfindUniqueOutputWithAddress
   , pgetOwnInput
   , pintervalFiniteClosedOpen
+  , ponlyOneInputFromAddress
   , pserialise
   , putxoAddress
   ) where
@@ -111,6 +112,17 @@ pintervalFiniteClosedOpen = phoistAcyclic $
                       # pdnil
             )
           # pdnil
+
+ponlyOneInputFromAddress :: Term s (PAddress :--> PTxInfo :--> PBool)
+ponlyOneInputFromAddress = phoistAcyclic $
+  plam $ \addr txInfo -> P.do
+    inputs <- plet $ pfromData $ pfield @"inputs" # txInfo
+    inputsFromAddress <-
+      plet $
+        pfilter
+          # plam (\utxo -> (pfield @"address" #$ pfield @"resolved" # utxo) #== addr)
+          # inputs
+    plength # inputsFromAddress #== 1
 
 pserialise :: PIsData a => Term s (a :--> PByteString)
 pserialise = phoistAcyclic $ plam $ \x -> pserialiseData #$ pforgetData $ pdata x
