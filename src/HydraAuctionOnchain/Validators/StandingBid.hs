@@ -9,6 +9,7 @@ import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
+  , pgetOwnInput
   , putxoAddress
   )
 import HydraAuctionOnchain.MintingPolicies.Auction
@@ -30,7 +31,7 @@ import Plutarch.Api.V2
   )
 import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.Maybe (pmaybe)
-import Plutarch.Extra.ScriptContext (ptryFromRedeemer, ptryOwnInput, ptxSignedBy)
+import Plutarch.Extra.ScriptContext (ptryFromRedeemer, ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
 --------------------------------------------------------------------------------
@@ -63,15 +64,21 @@ standingBidValidator
       )
 standingBidValidator = phoistAcyclic $
   plam $ \auctionCs auctionTerms oldBidState redeemer ctx -> P.do
-    ownInput <- plet $ ptryOwnInput # ctx
+    -- (STBD0) The validator's own input should exist.
+    ownInput <-
+      plet $
+        passertMaybe
+          $(errCode StandingBid'Error'MissingStandingBidInput)
+          (pgetOwnInput # ctx)
+
     txInfo <- plet $ pfield @"txInfo" # ctx
 
-    -- (STBD0) The standing bid input should contain the standing
+    -- (STBD1) The standing bid input should contain the standing
     -- bid token.
     passert $(errCode StandingBid'Error'OwnInputMissingToken) $
       ptxOutContainsStandingBidToken # auctionCs #$ pfield @"resolved" # ownInput
 
-    -- (STBD1) There should be no tokens minted or burned.
+    -- (STBD2) There should be no tokens minted or burned.
     mintValue <- plet $ pfield @"mint" # txInfo
     passert $(errCode StandingBid'Error'UnexpectedTokensMintedBurned) $
       pfromData mintValue #== mempty
@@ -100,19 +107,19 @@ pcheckNewBid
       )
 pcheckNewBid = phoistAcyclic $
   plam $ \txInfo auctionCs auctionTerms ownInput oldBidState -> P.do
-    -- (STBD2) The standing bid output should exist.
+    -- (STBD3) The standing bid output should exist.
     ownOutput <-
       plet $
         passertMaybe
           $(errCode StandingBid'NewBid'Error'MissingOwnOutput)
           (pfindUniqueOutputWithAddress # (putxoAddress # ownInput) # txInfo)
 
-    -- (STBD3) The standing bid output should contain the standing
+    -- (STBD4) The standing bid output should contain the standing
     -- bid token.
     passert $(errCode StandingBid'NewBid'Error'OwnOutputMissingToken) $
       ptxOutContainsStandingBidToken # auctionCs # ownOutput
 
-    -- (STBD4) The standing bid output's datum should be decodable
+    -- (STBD5) The standing bid output's datum should be decodable
     -- as a standing bid state.
     newBidState <-
       plet $
@@ -120,12 +127,12 @@ pcheckNewBid = phoistAcyclic $
           $(errCode StandingBid'NewBid'Error'FailedToDecodeNewBid)
           (pdecodeInlineDatum # ownOutput)
 
-    -- (STBD5) The transition from the old bid state to the new
+    -- (STBD6) The transition from the old bid state to the new
     -- bid state should be valid.
     passert $(errCode StandingBid'NewBid'Error'InvalidNewBidState) $
       pvalidateNewBid # auctionCs # auctionTerms # oldBidState # newBidState
 
-    -- (STBD6) The transaction validity should end before the
+    -- (STBD7) The transaction validity should end before the
     -- bidding end time.
     txInfoValidRange <- plet $ pfield @"validRange" # txInfo
     passert $(errCode StandingBid'NewBid'Error'IncorrectValidityInterval) $
@@ -142,12 +149,12 @@ pcheckMoveToHydra = phoistAcyclic $
   plam $ \txInfo auctionTerms -> P.do
     txInfoFields <- pletFields @["signatories", "validRange"] txInfo
 
-    -- (STBD7) The transaction should be signed by all the delegates.
+    -- (STBD8) The transaction should be signed by all the delegates.
     delegates <- plet $ pfield @"delegates" # auctionTerms
     passert $(errCode StandingBid'MoveToHydra'Error'MissingDelegateSignatures) $
       pall # plam (\sig -> ptxSignedBy # txInfoFields.signatories # sig) # delegates
 
-    -- (STBD8) The transaction validity should end before the
+    -- (STBD9) The transaction validity should end before the
     -- bidding end time.
     passert $(errCode StandingBid'MoveToHydra'Error'IncorrectValidityInterval) $
       pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
@@ -161,7 +168,7 @@ pcheckMoveToHydra = phoistAcyclic $
 pcheckConcludeAuction :: Term s (PTxInfo :--> PCurrencySymbol :--> PUnit)
 pcheckConcludeAuction = phoistAcyclic $
   plam $ \txInfo auctionCs -> P.do
-    -- (STBD9) There is an input that contains
+    -- (STBD10) There is an input that contains
     -- the auction escrow token.
     auctionEscrowUtxo <-
       plet $
@@ -169,7 +176,7 @@ pcheckConcludeAuction = phoistAcyclic $
           $(errCode StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput)
           (pfindUniqueInputWithToken # auctionCs # auctionEscrowTokenName # txInfo)
 
-    -- (STBD10) The auction escrow input is being spent with the
+    -- (STBD11) The auction escrow input is being spent with the
     -- `BidderBuys` or `SellerReclaims` redeemer. Implicitly, this
     -- means that the auction is concluding with either the winning
     -- bidder buying the auction lot or the seller reclaiming it.

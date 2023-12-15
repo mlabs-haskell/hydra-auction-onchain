@@ -5,6 +5,7 @@ module HydraAuctionOnchain.Helpers
   , pfindUnique
   , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
+  , pgetOwnInput
   , pintervalFiniteClosedOpen
   , pserialise
   , putxoAddress
@@ -18,6 +19,8 @@ import Plutarch.Api.V2
   , PInterval (PInterval)
   , PLowerBound (PLowerBound)
   , POutputDatum (POutputDatum)
+  , PScriptContext
+  , PScriptPurpose (PSpending)
   , PTokenName
   , PTxInInfo
   , PTxInfo
@@ -69,6 +72,18 @@ pfindUniqueOutputWithAddress = phoistAcyclic $
       # plam (\out -> (pfield @"address" # out) #== addr)
       #$ pfield @"outputs"
       # txInfo
+
+pgetOwnInput :: Term s (PScriptContext :--> PMaybe PTxInInfo)
+pgetOwnInput = phoistAcyclic $
+  plam $ \ctx ->
+    pmatch (pfield @"purpose" # ctx) $ \case
+      PSpending rec -> P.do
+        ownOutRef <- plet $ pfield @"_0" # rec
+        inputs <- plet $ pfromData $ pfield @"inputs" #$ pfield @"txInfo" # ctx
+        pfind
+          # plam (\utxo -> pfield @"outRef" # utxo #== ownOutRef)
+          # inputs
+      _ -> pnothing
 
 pintervalFiniteClosedOpen :: PIsData a => Term s (a :--> a :--> PInterval a)
 pintervalFiniteClosedOpen = phoistAcyclic $
