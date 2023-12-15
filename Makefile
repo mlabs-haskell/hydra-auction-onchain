@@ -1,4 +1,4 @@
-.PHONY: build, repl, format, hoogle, auction_metadata_validator
+.PHONY: build, repl, format, hoogle, all_scripts, auction_metadata_validator, standing_bid_validator
 
 hs-sources := $(shell fd --no-ignore-parent -ehs)
 cabal-sources := $(shell fd --no-ignore-parent -ecabal)
@@ -15,5 +15,11 @@ format:
 hoogle:
 	hoogle server --local --port=8070 > /dev/null &
 
+all_scripts:
+	cabal v2-run hydra-auction-onchain-exe -- --script all
+
 auction_metadata_validator:
-	cabal v2-run hydra-auction-onchain-exe
+	cabal v2-run hydra-auction-onchain-exe -- --script metadata
+
+standing_bid_validator:
+	cabal v2-run hydra-auction-onchain-exe -- --script standing_bid
