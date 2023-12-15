@@ -102,6 +102,7 @@ common common-lang
 library
   import:          common-lang
   exposed-modules:
+    HydraAuctionOnchain.Errors.StandingBid
     HydraAuctionOnchain.Helpers
     HydraAuctionOnchain.MintingPolicies.Auction
     HydraAuctionOnchain.Scripts
@@ -127,7 +128,10 @@ library
     , ply-core
     , ply-plutarch
     , pretty-simple
+    , safe
+    , template-haskell
     , text
+    , universe
 
   hs-source-dirs:  src
 
