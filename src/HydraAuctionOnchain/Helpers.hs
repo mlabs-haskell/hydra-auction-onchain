@@ -5,13 +5,20 @@ module HydraAuctionOnchain.Helpers
   , pfindUnique
   , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
+  , pfindUniqueOutputWithScriptHash
   , pgetOwnInput
   , pintervalFiniteClosedOpen
   , ponlyOneInputFromAddress
   , pserialise
+  , ptxOutContainsAuctionEscrowToken
+  , ptxOutContainsStandingBidToken
   , putxoAddress
   ) where
 
+import HydraAuctionOnchain.MintingPolicies.Auction
+  ( auctionEscrowTokenName
+  , standingBidTokenName
+  )
 import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2
   ( PAddress
@@ -21,6 +28,7 @@ import Plutarch.Api.V2
   , PLowerBound (PLowerBound)
   , POutputDatum (POutputDatum)
   , PScriptContext
+  , PScriptHash
   , PScriptPurpose (PSpending)
   , PTokenName
   , PTxInInfo
@@ -29,8 +37,8 @@ import Plutarch.Api.V2
   , PUpperBound (PUpperBound)
   )
 import Plutarch.Builtin (pforgetData, pserialiseData)
-import Plutarch.Extra.Maybe (pjust, pnothing)
-import Plutarch.Extra.ScriptContext (pfromPDatum)
+import Plutarch.Extra.Maybe (pdnothing, pjust, pnothing)
+import Plutarch.Extra.ScriptContext (paddressFromScriptHash, pfromPDatum)
 import Plutarch.Monadic qualified as P
 import "liqwid-plutarch-extra" Plutarch.Extra.List (pfromSingleton)
 
@@ -72,6 +80,13 @@ pfindUniqueOutputWithAddress = phoistAcyclic $
     pfindUnique
       # plam (\out -> (pfield @"address" # out) #== addr)
       #$ pfield @"outputs"
+      # txInfo
+
+pfindUniqueOutputWithScriptHash :: Term s (PScriptHash :--> PTxInfo :--> PMaybe PTxOut)
+pfindUniqueOutputWithScriptHash = phoistAcyclic $
+  plam $ \scriptHash txInfo ->
+    pfindUniqueOutputWithAddress
+      # (paddressFromScriptHash # scriptHash # pdnothing)
       # txInfo
 
 pgetOwnInput :: Term s (PScriptContext :--> PMaybe PTxInInfo)
@@ -126,6 +141,18 @@ ponlyOneInputFromAddress = phoistAcyclic $
 
 pserialise :: PIsData a => Term s (a :--> PByteString)
 pserialise = phoistAcyclic $ plam $ \x -> pserialiseData #$ pforgetData $ pdata x
+
+ptxOutContainsAuctionEscrowToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
+ptxOutContainsAuctionEscrowToken = phoistAcyclic $
+  plam $ \auctionCs txOut ->
+    (pvalueOf # (pfield @"value" # txOut) # auctionCs # auctionEscrowTokenName)
+      #== 1
+
+ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
+ptxOutContainsStandingBidToken = phoistAcyclic $
+  plam $ \auctionCs txOut ->
+    (pvalueOf # (pfield @"value" # txOut) # auctionCs # standingBidTokenName)
+      #== 1
 
 putxoAddress :: Term s (PTxInInfo :--> PAddress)
 putxoAddress = phoistAcyclic $

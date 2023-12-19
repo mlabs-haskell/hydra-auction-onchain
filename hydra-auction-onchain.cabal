@@ -102,10 +102,12 @@ common common-lang
 library
   import:          common-lang
   exposed-modules:
+    HydraAuctionOnchain.Errors.AuctionEscrow
     HydraAuctionOnchain.Errors.StandingBid
     HydraAuctionOnchain.Helpers
     HydraAuctionOnchain.MintingPolicies.Auction
     HydraAuctionOnchain.Scripts
+    HydraAuctionOnchain.Types.AuctionEscrowState
     HydraAuctionOnchain.Types.AuctionInfo
     HydraAuctionOnchain.Types.AuctionTerms
     HydraAuctionOnchain.Types.BidderInfo
