@@ -1,6 +1,7 @@
 module HydraAuctionOnchain.Scripts
   ( auctionMetadataValidatorScript
   , auctionMetadataValidatorUntyped
+  , compileScript
   , standingBidValidatorScript
   , standingBidValidatorUntyped
   , writeScript

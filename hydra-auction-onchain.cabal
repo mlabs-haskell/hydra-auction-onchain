@@ -147,3 +147,24 @@ executable hydra-auction-onchain-exe
   other-modules:
   hs-source-dirs: app
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+test-suite hydra-auction-onchain-test
+  import:         common-lang
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Spec.hs
+  other-modules:
+    Spec.HydraAuctionOnchain.Helpers
+    Spec.HydraAuctionOnchain.Types.AuctionTerms
+    Spec.HydraAuctionOnchain.Validators.StandingBid
+
+  build-depends:
+    , hydra-auction-onchain
+    , plutarch
+    , plutus-ledger-api
+    , plutus-tx
+    , pretty-simple
+    , QuickCheck
+    , tasty
+    , tasty-quickcheck
+    , text

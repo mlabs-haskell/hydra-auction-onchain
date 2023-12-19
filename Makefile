@@ -1,10 +1,13 @@
-.PHONY: build, repl, format, hoogle, all_scripts, auction_metadata_validator, standing_bid_validator
+.PHONY: build test repl format hoogle all_scripts auction_metadata_validator standing_bid_validator
 
 hs-sources := $(shell fd --no-ignore-parent -ehs)
 cabal-sources := $(shell fd --no-ignore-parent -ecabal)
 
 build:
 	cabal v2-build all
+
+test:
+	cabal v2-test
 
 repl:
 	cabal v2-repl hydra-auction-onchain --ghc-options '-Wno-missing-import-lists'
