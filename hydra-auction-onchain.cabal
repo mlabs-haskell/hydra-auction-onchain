@@ -154,13 +154,19 @@ test-suite hydra-auction-onchain-test
   hs-source-dirs: test
   main-is:        Spec.hs
   other-modules:
+    Spec.HydraAuctionOnchain.Gen
     Spec.HydraAuctionOnchain.Helpers
     Spec.HydraAuctionOnchain.Types.AuctionTerms
+    Spec.HydraAuctionOnchain.Types.BidderInfo
+    Spec.HydraAuctionOnchain.Types.BidTerms
+    Spec.HydraAuctionOnchain.Types.Redeemers
+    Spec.HydraAuctionOnchain.Types.StandingBidState
     Spec.HydraAuctionOnchain.Validators.StandingBid
 
   build-depends:
     , hydra-auction-onchain
     , plutarch
+    , plutarch-quickcheck
     , plutus-ledger-api
     , plutus-tx
     , pretty-simple

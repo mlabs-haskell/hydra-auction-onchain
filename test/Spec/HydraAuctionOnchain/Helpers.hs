@@ -1,5 +1,6 @@
 module Spec.HydraAuctionOnchain.Helpers
   ( shouldFail
+  , shouldSucceed
   ) where
 
 import Data.Text.Lazy qualified as TL (unpack)
@@ -17,6 +18,19 @@ shouldFail script =
         . counterexample (showLogs logs)
         . property
         $ False
+  where
+    (result, _exUnits, logs) = evalScript script
+
+shouldSucceed :: Script -> Property
+shouldSucceed script =
+  case result of
+    Left err ->
+      counterexample "Expected success, but failed instead."
+        . counterexample ("Error: " <> show err)
+        . counterexample (showLogs logs)
+        . property
+        $ False
+    Right _ -> property True
   where
     (result, _exUnits, logs) = evalScript script
 

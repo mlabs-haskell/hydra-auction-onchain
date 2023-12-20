@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module HydraAuctionOnchain.Validators.StandingBid
-  ( standingBidValidator
+  ( PStandingBidRedeemer (NewBidRedeemer, MoveToHydraRedeemer, ConcludeAuctionRedeemer)
+  , standingBidValidator
   ) where
 
 import HydraAuctionOnchain.Errors.StandingBid (PStandingBidError (..))
