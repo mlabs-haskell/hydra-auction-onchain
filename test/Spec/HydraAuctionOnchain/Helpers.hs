@@ -1,40 +1,36 @@
 module Spec.HydraAuctionOnchain.Helpers
-  ( shouldFail
-  , shouldSucceed
+  ( hashVerificationKey
+  , mkStandingBidTokenValue
+  , serialise
   ) where
 
-import Data.Text.Lazy qualified as TL (unpack)
-import Plutarch (Script)
-import Plutarch.Evaluate (evalScript)
-import Test.Tasty.QuickCheck (Property, counterexample, property)
-import Text.Pretty.Simple (pShow)
+import Crypto.Hash (Blake2b_224, hash)
+import Crypto.PubKey.Ed25519 (PublicKey)
+import Data.ByteArray (convert)
+import Data.ByteString (ByteString)
+import PlutusLedgerApi.V1 (CurrencySymbol, Value)
+import PlutusLedgerApi.V1.Value qualified as Value (singleton)
+import PlutusLedgerApi.V2 (BuiltinByteString, PubKeyHash (PubKeyHash), toBuiltin)
+import PlutusTx (ToData, toBuiltinData)
+import PlutusTx.Builtins (serialiseData)
 
-shouldFail :: Script -> Property
-shouldFail script =
-  case result of
-    Left _ -> property True
-    Right _ ->
-      counterexample "Expected failure, but succeeded instead."
-        . counterexample (showLogs logs)
-        . property
-        $ False
+hashVerificationKey :: PublicKey -> (BuiltinByteString, PubKeyHash)
+hashVerificationKey vkey =
+  (vkeyBytes, pubKeyHash)
   where
-    (result, _exUnits, logs) = evalScript script
+    vkeyBytes :: BuiltinByteString
+    vkeyBytes = toBuiltin @ByteString $ convert vkey
 
-shouldSucceed :: Script -> Property
-shouldSucceed script =
-  case result of
-    Left err ->
-      counterexample "Expected success, but failed instead."
-        . counterexample ("Error: " <> show err)
-        . counterexample (showLogs logs)
-        . property
-        $ False
-    Right _ -> property True
-  where
-    (result, _exUnits, logs) = evalScript script
+    pubKeyHash :: PubKeyHash
+    pubKeyHash =
+      PubKeyHash
+        . toBuiltin @ByteString
+        . convert
+        $ hash @PublicKey @Blake2b_224 vkey
 
-showLogs :: Show a => [a] -> String
-showLogs = \case
-  [] -> "No logs found. Did you forget to compile with tracing on?"
-  logs -> TL.unpack $ pShow logs
+mkStandingBidTokenValue :: CurrencySymbol -> Value
+mkStandingBidTokenValue cs = Value.singleton cs "STANDING_BID" 1
+
+{-# INLINEABLE serialise #-}
+serialise :: ToData a => a -> BuiltinByteString
+serialise = serialiseData . toBuiltinData

@@ -6,65 +6,107 @@ import Data.List (singleton)
 import HydraAuctionOnchain.Scripts (compileScript)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Script)
+import Plutarch.Test.QuickCheck.Instances ()
+import Plutarch.Test.QuickCheck.Modifiers
+  ( AdaSymbolPresence (WithoutAdaSymbol)
+  , GenCurrencySymbol (GenCurrencySymbol)
+  )
 import PlutusLedgerApi.V2
-  ( Address
+  ( Address (Address)
+  , Credential (ScriptCredential)
   , CurrencySymbol
   , Datum (Datum)
   , OutputDatum (OutputDatum)
   , Redeemer (Redeemer)
   , ScriptContext (..)
+  , ScriptHash
   , ScriptPurpose (Spending)
   , TxInInfo (TxInInfo)
   , TxInfo (..)
   , TxOut (..)
   , TxOutRef
+  , Value
   , dataToBuiltinData
   , toData
   )
 import PlutusTx.AssocMap qualified as AMap (singleton)
-import Spec.HydraAuctionOnchain.Gen (genTxInfoTemplate)
-import Spec.HydraAuctionOnchain.Helpers (shouldFail, shouldSucceed)
+import Spec.HydraAuctionOnchain.Expectations (shouldSucceed)
+import Spec.HydraAuctionOnchain.Helpers (mkStandingBidTokenValue)
+import Spec.HydraAuctionOnchain.QuickCheck.Gen
+  ( genKeyPair
+  , genTxInfoTemplate
+  , genValidAuctionTerms
+  , genValidBidState
+  , genValidNewBidState
+  , vkey
+  )
 import Spec.HydraAuctionOnchain.Types.AuctionTerms (AuctionTerms)
 import Spec.HydraAuctionOnchain.Types.Redeemers (StandingBidRedeemer (NewBidRedeemer))
 import Spec.HydraAuctionOnchain.Types.StandingBidState (StandingBidState)
+import Test.QuickCheck (Arbitrary (arbitrary), Property)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.QuickCheck (Property, testProperty)
+import Test.Tasty.QuickCheck (testProperty)
 
 spec :: TestTree
 spec =
   testGroup
     "StandingBid"
-    [ testProperty "Succeeds" prop_validInput_succeeds
-    , testProperty "Fails when own input is missing" prop_ownInputMissing_fails
+    [ testGroup
+        "NewBidRedeemer"
+        [ testProperty "Succeeds" prop_newBid_validInput_succeeds
+        ]
     ]
 
-prop_validInput_succeeds :: Property
-prop_validInput_succeeds = shouldSucceed undefined
-
-prop_ownInputMissing_fails :: Property
-prop_ownInputMissing_fails = shouldFail undefined
+prop_newBid_validInput_succeeds :: TestContext -> Property
+prop_newBid_validInput_succeeds testContext = shouldSucceed $ testNewBid testContext
 
 data TestContext = TestContext
   { auctionCs :: CurrencySymbol
   , auctionTerms :: AuctionTerms
-  , datum :: StandingBidState
+  , oldBidState :: StandingBidState
+  , newBidState :: StandingBidState
   , txInfoTemplate :: TxInfo
   , standingBidInputOref :: TxOutRef
   , scriptAddress :: Address
   }
+  deriving stock (Show, Eq)
+
+instance Arbitrary TestContext where
+  arbitrary = do
+    GenCurrencySymbol auctionCs <- arbitrary @(GenCurrencySymbol 'WithoutAdaSymbol)
+    (sellerKeys, bidderKeys) <- (,) <$> genKeyPair <*> genKeyPair
+    auctionTerms <- genValidAuctionTerms $ vkey sellerKeys
+    oldBidState <- genValidBidState auctionCs auctionTerms sellerKeys bidderKeys
+    newBidState <- genValidNewBidState oldBidState auctionCs auctionTerms sellerKeys bidderKeys
+    txInfoTemplate <- genTxInfoTemplate
+    standingBidInputOref <- arbitrary @TxOutRef
+    scriptAddress <- flip Address Nothing . ScriptCredential <$> arbitrary @ScriptHash
+    pure TestContext {..}
 
 testNewBid :: TestContext -> Script
 testNewBid TestContext {..} =
   let
+    standingBidTokenValue :: Value
+    standingBidTokenValue = mkStandingBidTokenValue auctionCs
+
     standingBidInput :: TxInInfo
     standingBidInput =
       TxInInfo standingBidInputOref $
         TxOut
           { txOutAddress = scriptAddress
-          , txOutValue = undefined
-          , txOutDatum = OutputDatum $ Datum $ dataToBuiltinData $ toData datum
+          , txOutValue = standingBidTokenValue
+          , txOutDatum = OutputDatum $ Datum $ dataToBuiltinData $ toData oldBidState
           , txOutReferenceScript = Nothing
           }
+
+    standingBidOutput :: TxOut
+    standingBidOutput =
+      TxOut
+        { txOutAddress = scriptAddress
+        , txOutValue = standingBidTokenValue
+        , txOutDatum = OutputDatum $ Datum $ dataToBuiltinData $ toData newBidState
+        , txOutReferenceScript = Nothing
+        }
 
     newBidRedeemer :: StandingBidRedeemer
     newBidRedeemer = NewBidRedeemer
@@ -81,13 +123,13 @@ testNewBid TestContext {..} =
         { scriptContextTxInfo =
             txInfoTemplate
               { txInfoInputs = singleton standingBidInput
-              , txInfoOutputs = outputs
+              , txInfoOutputs = singleton standingBidOutput
               , txInfoRedeemers = AMap.singleton scriptPurpose redeemer
               }
         , scriptContextPurpose = scriptPurpose
         }
   in
-    compile auctionCs auctionTerms datum newBidRedeemer ctx
+    compile auctionCs auctionTerms oldBidState newBidRedeemer ctx
 
 compile
   :: CurrencySymbol
