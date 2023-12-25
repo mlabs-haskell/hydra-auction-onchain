@@ -168,6 +168,7 @@ test-suite hydra-auction-onchain-test
   build-depends:
     , bytestring
     , cryptonite
+    , data-default
     , hydra-auction-onchain
     , memory
     , plutarch
@@ -177,5 +178,6 @@ test-suite hydra-auction-onchain-test
     , pretty-simple
     , QuickCheck
     , tasty
+    , tasty-expected-failure
     , tasty-quickcheck
     , text

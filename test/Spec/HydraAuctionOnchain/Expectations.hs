@@ -1,9 +1,12 @@
 module Spec.HydraAuctionOnchain.Expectations
   ( shouldFail
+  , shouldFailWithError
   , shouldSucceed
   ) where
 
+import Data.Text qualified as T (unpack)
 import Data.Text.Lazy qualified as TL (unpack)
+import HydraAuctionOnchain.Types.Error (ErrorCode (toErrorCode))
 import Plutarch (Script)
 import Plutarch.Evaluate (evalScript)
 import Test.Tasty.QuickCheck (Property, counterexample, property)
@@ -19,6 +22,24 @@ shouldFail script =
         . property
         $ False
   where
+    (result, _exUnits, logs) = evalScript script
+
+shouldFailWithError :: ErrorCode e => e -> Script -> Property
+shouldFailWithError errExpected script =
+  case result of
+    Left _ | last logs == errCode -> property True
+    Left _ ->
+      counterexample ("Expected failure with error code " <> T.unpack errCode <> ".")
+        . counterexample (showLogs logs)
+        . property
+        $ False
+    Right _ ->
+      counterexample "Expected failure, but succeeded instead."
+        . counterexample (showLogs logs)
+        . property
+        $ False
+  where
+    errCode = toErrorCode errExpected
     (result, _exUnits, logs) = evalScript script
 
 shouldSucceed :: Script -> Property

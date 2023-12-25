@@ -15,6 +15,7 @@ import Test.QuickCheck (Arbitrary (arbitrary))
 
 newtype GenNonAdaValue (mod :: Type -> Type) = GenNonAdaValue Value
   deriving stock (Show, Eq)
+  deriving newtype (Semigroup, Monoid)
 
 instance
   ( Arbitrary (mod Integer)
