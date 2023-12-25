@@ -1,16 +1,19 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.HydraAuctionOnchain.Types.AuctionTerms
   ( AuctionTerms (..)
+  , biddingPeriod
   ) where
 
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
 import Plutarch.DataRepr (DerivePConstantViaData (DerivePConstantViaData))
 import Plutarch.Lift (PConstantDecl, PUnsafeLiftDecl (PLifted))
-import PlutusLedgerApi.V2 (BuiltinByteString, POSIXTime, PubKeyHash, Value)
+import PlutusLedgerApi.V2 (BuiltinByteString, POSIXTime, POSIXTimeRange, PubKeyHash, Value)
 import PlutusTx (makeIsDataIndexed)
+import Spec.HydraAuctionOnchain.Helpers (intervalFiniteClosedOpen)
 
 data AuctionTerms = AuctionTerms
   { at'AuctionLot :: Value
@@ -37,3 +40,10 @@ deriving via
 
 instance PUnsafeLiftDecl PAuctionTerms where
   type PLifted PAuctionTerms = AuctionTerms
+
+--------------------------------------------------------------------------------
+-- Auction Lifecycle
+--------------------------------------------------------------------------------
+
+biddingPeriod :: AuctionTerms -> POSIXTimeRange
+biddingPeriod AuctionTerms {..} = intervalFiniteClosedOpen at'BiddingStart at'BiddingEnd

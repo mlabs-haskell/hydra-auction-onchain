@@ -7,7 +7,7 @@ build:
 	cabal v2-build all
 
 test:
-	cabal v2-test
+	cabal v2-test --test-show-details=streaming --test-options="--quickcheck-tests=100"
 
 repl:
 	cabal v2-repl hydra-auction-onchain --ghc-options '-Wno-missing-import-lists'

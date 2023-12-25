@@ -45,7 +45,6 @@ import Test.QuickCheck
   , chooseInt
   , chooseInteger
   , liftArbitrary
-  , suchThat
   , vector
   )
 
@@ -61,6 +60,9 @@ genKeyPair =
   arbitraryBoundedRandom <&> \seed ->
     let (skey, _) = withDRG (drgNewTest seed) generateSecretKey
     in KeyPair skey $ toPublic skey
+
+genIntegerGreaterThan :: Integer -> Gen Integer
+genIntegerGreaterThan a = arbitrary @(Positive Integer) <&> \(Positive b) -> a + b
 
 genTxInfoTemplate :: Gen TxInfo
 genTxInfoTemplate = do
@@ -82,15 +84,29 @@ genTxInfoTemplate = do
       , txInfoId
       }
 
-genValidBidTerms :: CurrencySymbol -> AuctionTerms -> KeyPair -> KeyPair -> Gen BidTerms
-genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys = do
+genValidBidTerms
+  :: CurrencySymbol
+  -> AuctionTerms
+  -> KeyPair
+  -> KeyPair
+  -> Maybe Integer
+  -> Gen BidTerms
+genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys mOldBidPrice = do
   let (bi'BidderVk, bi'BidderPkh) = hashVerificationKey $ vkey bidderKeys
   let bt'Bidder = BidderInfo {..}
-  bt'BidPrice <- arbitrary @Integer `suchThat` (\x -> x > at'StartingBid auctionTerms)
+  bt'BidPrice <- genBidPrice
   let bt'SellerSignature = sellerSignature bi'BidderVk
   let bt'BidderSignature = bidderSignature bt'BidPrice bi'BidderPkh
   pure BidTerms {..}
   where
+    genBidPrice :: Gen Integer
+    genBidPrice =
+      case mOldBidPrice of
+        Just oldBidPrice ->
+          genIntegerGreaterThan $ oldBidPrice + at'MinBidIncrement auctionTerms
+        Nothing ->
+          genIntegerGreaterThan $ at'StartingBid auctionTerms
+
     sellerSignature :: BuiltinByteString -> BuiltinByteString
     sellerSignature bidderVkey =
       signUsingKeyPair sellerKeys $
@@ -110,7 +126,7 @@ genValidBidState
 genValidBidState auctionCs auctionTerms sellerKeys bidderKeys =
   StandingBidState
     <$> liftArbitrary
-      (genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys)
+      (genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys Nothing)
 
 genValidNewBidState
   :: StandingBidState
@@ -120,15 +136,14 @@ genValidNewBidState
   -> KeyPair
   -> Gen StandingBidState
 genValidNewBidState oldBidState auctionCs auctionTerms sellerKeys bidderKeys =
-  case oldBidState of
-    StandingBidState Nothing ->
-      genValidBidState auctionCs auctionTerms sellerKeys bidderKeys
-    StandingBidState (Just oldBidTerms) -> do
-      newBidPrice <- arbitrary @Integer `suchThat` (\x -> x >= at'MinBidIncrement auctionTerms)
-      pure . StandingBidState . Just $
-        oldBidTerms
-          { bt'BidPrice = newBidPrice
-          }
+  StandingBidState . Just
+    <$> genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys oldBidPrice
+  where
+    oldBidPrice :: Maybe Integer
+    oldBidPrice =
+      case oldBidState of
+        StandingBidState Nothing -> Nothing
+        StandingBidState (Just oldBidTerms) -> Just $ bt'BidPrice oldBidTerms
 
 genValidAuctionTerms :: PublicKey -> Gen AuctionTerms
 genValidAuctionTerms vkey = do
@@ -145,10 +160,10 @@ genValidAuctionTerms vkey = do
   let at'Cleanup = at'PurchaseDeadline + penaltyPeriod
 
   let minAuctionFeePerDelegate = 2_000_000
-  at'AuctionFeePerDelegate <- arbitrary @Integer `suchThat` (\x -> x > minAuctionFeePerDelegate)
+  at'AuctionFeePerDelegate <- genIntegerGreaterThan minAuctionFeePerDelegate
 
   let minStartingBid = at'AuctionFeePerDelegate * fromIntegral (length at'Delegates)
-  at'StartingBid <- arbitrary @Integer `suchThat` (\x -> x > minStartingBid)
+  at'StartingBid <- genIntegerGreaterThan minStartingBid
 
   Positive at'MinBidIncrement <- arbitrary @(Positive Integer)
   NonNegative at'MinDepositAmount <- arbitrary @(NonNegative Integer)

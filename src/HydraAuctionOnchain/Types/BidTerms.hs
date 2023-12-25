@@ -73,7 +73,7 @@ bidderSignatureMessage
       )
 bidderSignatureMessage = phoistAcyclic $
   plam $ \auctionCs bidPrice bidderPkh ->
-    (pserialise # auctionCs) <> (pserialise # bidPrice) <> (pserialise # bidderPkh)
+    (pserialise # auctionCs) <> (pserialise # bidderPkh) <> (pserialise # bidPrice)
 
 sellerSignatureMessage :: Term s (PCurrencySymbol :--> PByteString :--> PByteString)
 sellerSignatureMessage = phoistAcyclic $

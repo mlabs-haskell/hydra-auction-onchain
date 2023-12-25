@@ -40,7 +40,7 @@ import Spec.HydraAuctionOnchain.QuickCheck.Gen
   , genValidNewBidState
   , vkey
   )
-import Spec.HydraAuctionOnchain.Types.AuctionTerms (AuctionTerms)
+import Spec.HydraAuctionOnchain.Types.AuctionTerms (AuctionTerms, biddingPeriod)
 import Spec.HydraAuctionOnchain.Types.Redeemers (StandingBidRedeemer (NewBidRedeemer))
 import Spec.HydraAuctionOnchain.Types.StandingBidState (StandingBidState)
 import Test.QuickCheck (Arbitrary (arbitrary), Property)
@@ -57,10 +57,14 @@ spec =
         ]
     ]
 
-prop_newBid_validInput_succeeds :: TestContext -> Property
+--------------------------------------------------------------------------------
+-- NewBid
+--------------------------------------------------------------------------------
+
+prop_newBid_validInput_succeeds :: NewBidTestContext -> Property
 prop_newBid_validInput_succeeds testContext = shouldSucceed $ testNewBid testContext
 
-data TestContext = TestContext
+data NewBidTestContext = NewBidTestContext
   { auctionCs :: CurrencySymbol
   , auctionTerms :: AuctionTerms
   , oldBidState :: StandingBidState
@@ -71,7 +75,7 @@ data TestContext = TestContext
   }
   deriving stock (Show, Eq)
 
-instance Arbitrary TestContext where
+instance Arbitrary NewBidTestContext where
   arbitrary = do
     GenCurrencySymbol auctionCs <- arbitrary @(GenCurrencySymbol 'WithoutAdaSymbol)
     (sellerKeys, bidderKeys) <- (,) <$> genKeyPair <*> genKeyPair
@@ -81,10 +85,10 @@ instance Arbitrary TestContext where
     txInfoTemplate <- genTxInfoTemplate
     standingBidInputOref <- arbitrary @TxOutRef
     scriptAddress <- flip Address Nothing . ScriptCredential <$> arbitrary @ScriptHash
-    pure TestContext {..}
+    pure NewBidTestContext {..}
 
-testNewBid :: TestContext -> Script
-testNewBid TestContext {..} =
+testNewBid :: NewBidTestContext -> Script
+testNewBid NewBidTestContext {..} =
   let
     standingBidTokenValue :: Value
     standingBidTokenValue = mkStandingBidTokenValue auctionCs
@@ -124,6 +128,7 @@ testNewBid TestContext {..} =
             txInfoTemplate
               { txInfoInputs = singleton standingBidInput
               , txInfoOutputs = singleton standingBidOutput
+              , txInfoValidRange = biddingPeriod auctionTerms
               , txInfoRedeemers = AMap.singleton scriptPurpose redeemer
               }
         , scriptContextPurpose = scriptPurpose
