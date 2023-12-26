@@ -1,7 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module HydraAuctionOnchain.Validators.AuctionEscrow
-  ( auctionEscrowValidator
+  ( PAuctionEscrowRedeemer
+      ( StartBiddingRedeemer
+      , BidderBuysRedeemer
+      , SellerReclaimsRedeemer
+      , CleanupAuctionRedeemer
+      )
+  , auctionEscrowValidator
   , pisConcluding
   ) where
 

@@ -1,6 +1,7 @@
 module Spec.HydraAuctionOnchain.Helpers
   ( hashVerificationKey
   , intervalFiniteClosedOpen
+  , mkAuctionEscrowTokenValue
   , mkStandingBidTokenValue
   , serialise
   ) where
@@ -43,6 +44,9 @@ intervalFiniteClosedOpen a b =
 
 mkStandingBidTokenValue :: CurrencySymbol -> Value
 mkStandingBidTokenValue cs = Value.singleton cs "STANDING_BID" 1
+
+mkAuctionEscrowTokenValue :: CurrencySymbol -> Value
+mkAuctionEscrowTokenValue cs = Value.singleton cs "AUCTION" 1
 
 {-# INLINEABLE serialise #-}
 serialise :: ToData a => a -> BuiltinByteString

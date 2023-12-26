@@ -33,9 +33,13 @@ import PlutusLedgerApi.V2
   , dataToBuiltinData
   , toData
   )
-import PlutusTx.AssocMap qualified as AMap (singleton)
+import PlutusTx.AssocMap qualified as AMap (fromList, singleton)
 import Spec.HydraAuctionOnchain.Expectations (shouldFail, shouldFailWithError, shouldSucceed)
-import Spec.HydraAuctionOnchain.Helpers (intervalFiniteClosedOpen, mkStandingBidTokenValue)
+import Spec.HydraAuctionOnchain.Helpers
+  ( intervalFiniteClosedOpen
+  , mkAuctionEscrowTokenValue
+  , mkStandingBidTokenValue
+  )
 import Spec.HydraAuctionOnchain.QuickCheck.Gen
   ( genKeyPair
   , genScriptAddress
@@ -48,7 +52,13 @@ import Spec.HydraAuctionOnchain.QuickCheck.Gen
 import Spec.HydraAuctionOnchain.QuickCheck.Modifiers (GenNonAdaValue (GenNonAdaValue))
 import Spec.HydraAuctionOnchain.Types.AuctionTerms (AuctionTerms (..), biddingPeriod)
 import Spec.HydraAuctionOnchain.Types.Redeemers
-  ( StandingBidRedeemer (MoveToHydraRedeemer, NewBidRedeemer)
+  ( AuctionEscrowRedeemer
+      ( BidderBuysRedeemer
+      , CleanupAuctionRedeemer
+      , SellerReclaimsRedeemer
+      , StartBiddingRedeemer
+      )
+  , StandingBidRedeemer (ConcludeAuctionRedeemer, MoveToHydraRedeemer, NewBidRedeemer)
   )
 import Spec.HydraAuctionOnchain.Types.StandingBidState (StandingBidState (StandingBidState))
 import Test.QuickCheck
@@ -57,6 +67,7 @@ import Test.QuickCheck
   , Positive (Positive)
   , Property
   , chooseInt
+  , elements
   , resize
   , shuffle
   , suchThat
@@ -70,9 +81,7 @@ spec :: TestTree
 spec =
   testGroup "StandingBid" $
     [ testGroup "Common" $
-        [ testProperty "Succeeds if transaction is valid" $
-            prop_validInput_succeeds
-        , testProperty "Fails if standing bid input does not exist" $
+        [ testProperty "Fails if standing bid input does not exist" $
             prop_missingStandingBidInput_fails
         , testProperty "Fails if there are multiple standing bid inputs" $
             prop_multipleStandingBidInputs_fails
@@ -82,7 +91,9 @@ spec =
             prop_mintsBurnsValue_fails
         ]
     , testGroup "NewBidRedeemer" $
-        [ testProperty "Fails if standing bid output does not exist" $
+        [ testProperty "Succeeds if transaction is valid" $
+            prop_newBid_validInput_succeeds
+        , testProperty "Fails if standing bid output does not exist" $
             prop_newBid_missingStandingBidOutput_fails
         , testProperty "Fails if there are multiple standing bid outputs" $
             prop_multipleStandingBidOutputs_fails
@@ -105,6 +116,18 @@ spec =
         , testProperty "Fails if tx validity interval is incorrect" $
             prop_moveToHydra_incorrectValidRange_fails
         ]
+    , testGroup "ConcludeAuction" $
+        [ testProperty "Succeeds if transaction is valid" $
+            prop_concludeAuction_validInput_succeeds
+        , testProperty "Fails if auction escrow input does not exist" $
+            prop_concludeAuction_missingAuctionEscrowInput_fails
+        , testProperty "Fails if there are multiple auction escrow inputs" $
+            prop_concludeAuction_multipleAuctionEscrowInputs_fails
+        , testProperty "Fails if auction escrow input does not contain auction escrow token" $
+            prop_concludeAuction_auctionEscrowInputMissingToken_fails
+        , testProperty "Fails if auction escrow input is being spent with wrong redeemer" $
+            prop_concludeAuction_auctionEscrowWrongRedeemer_fails
+        ]
     ]
 
 --------------------------------------------------------------------------------
@@ -113,17 +136,12 @@ spec =
 
 -- Common ------------------------------------------------------------
 
-prop_validInput_succeeds :: NewBidTestContext -> Property
-prop_validInput_succeeds testContext =
-  shouldSucceed $
-    testNewBid testContext def
-
 prop_missingStandingBidInput_fails :: NewBidTestContext -> Property
 prop_missingStandingBidInput_fails testContext =
   shouldFailWithError StandingBid'Error'MissingStandingBidInput $
     testNewBid testContext $
       def
-        { standingBidInputMode = StandingBidInputMissing
+        { standingBidInputMode = TxOutputMissing
         }
 
 prop_multipleStandingBidInputs_fails :: NewBidTestContext -> Property
@@ -131,7 +149,7 @@ prop_multipleStandingBidInputs_fails testContext =
   shouldFailWithError StandingBid'Error'TooManyOwnScriptInputs $
     testNewBid testContext $
       def
-        { standingBidInputMode = MultipleStandingBidInputs
+        { standingBidInputMode = MultipleTxOutputs
         }
 
 prop_standingBidInputMissingToken_fails :: NewBidTestContext -> Property
@@ -152,12 +170,17 @@ prop_mintsBurnsValue_fails testContext =
 
 -- NewBid ------------------------------------------------------------
 
+prop_newBid_validInput_succeeds :: NewBidTestContext -> Property
+prop_newBid_validInput_succeeds testContext =
+  shouldSucceed $
+    testNewBid testContext def
+
 prop_newBid_missingStandingBidOutput_fails :: NewBidTestContext -> Property
 prop_newBid_missingStandingBidOutput_fails testContext =
   shouldFailWithError StandingBid'NewBid'Error'MissingOwnOutput $
     testNewBid testContext $
       def
-        { standingBidOutputMode = StandingBidOutputMissing
+        { standingBidOutputMode = TxOutputMissing
         }
 
 prop_multipleStandingBidOutputs_fails :: NewBidTestContext -> Property
@@ -165,7 +188,7 @@ prop_multipleStandingBidOutputs_fails testContext =
   shouldFailWithError StandingBid'NewBid'Error'MissingOwnOutput $
     testNewBid testContext $
       def
-        { standingBidOutputMode = MultipleStandingBidOutputs
+        { standingBidOutputMode = MultipleTxOutputs
         }
 
 prop_newBid_standingBidOutputMissingToken_fails :: NewBidTestContext -> Property
@@ -229,6 +252,47 @@ prop_moveToHydra_incorrectValidRange_fails testContext =
     testMoveToHydra testContext $
       def
         { mh'txHasIncorrectValidRange = True
+        }
+
+-- ConcludeAuction ---------------------------------------------------
+
+prop_concludeAuction_validInput_succeeds :: ConcludeAuctionTestContext -> Property
+prop_concludeAuction_validInput_succeeds testContext =
+  shouldSucceed $
+    testConcludeAuction testContext def
+
+prop_concludeAuction_missingAuctionEscrowInput_fails :: ConcludeAuctionTestContext -> Property
+prop_concludeAuction_missingAuctionEscrowInput_fails testContext =
+  shouldFailWithError StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput $
+    testConcludeAuction testContext $
+      def
+        { ca'auctionEscrowInputMode = TxOutputMissing
+        }
+
+prop_concludeAuction_multipleAuctionEscrowInputs_fails
+  :: ConcludeAuctionTestContext -> Property
+prop_concludeAuction_multipleAuctionEscrowInputs_fails testContext =
+  shouldFailWithError StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput $
+    testConcludeAuction testContext $
+      def
+        { ca'auctionEscrowInputMode = MultipleTxOutputs
+        }
+
+prop_concludeAuction_auctionEscrowInputMissingToken_fails
+  :: ConcludeAuctionTestContext -> Property
+prop_concludeAuction_auctionEscrowInputMissingToken_fails testContext =
+  shouldFailWithError StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput $
+    testConcludeAuction testContext $
+      def
+        { ca'auctionEscrowInputContainsToken = False
+        }
+
+prop_concludeAuction_auctionEscrowWrongRedeemer_fails :: ConcludeAuctionTestContext -> Property
+prop_concludeAuction_auctionEscrowWrongRedeemer_fails testContext =
+  shouldFailWithError StandingBid'ConcludeAuction'Error'InvalidAuctionEscrowRedeemer $
+    testConcludeAuction testContext $
+      def
+        { ca'spendsAuctionEscrowInputWithWrongRedeemer = True
         }
 
 --------------------------------------------------------------------------------
@@ -300,20 +364,40 @@ instance Arbitrary MoveToHydraTestContext where
     delegatesSublist <- flip take delegates' <$> chooseInt (0, length delegates' - 1)
     pure MoveToHydraTestContext {..}
 
+-- ConcludeAuction ---------------------------------------------------
+
+data ConcludeAuctionTestContext = ConcludeAuctionTestContext
+  { auctionCs :: CurrencySymbol
+  , auctionTerms :: AuctionTerms
+  , txInfoTemplate :: TxInfo
+  , standingBidInputOref :: TxOutRef
+  , auctionEscrowInputOref :: TxOutRef
+  , standingBidAddress :: Address
+  , auctionEscrowAddress :: Address
+  , auctionEscrowRedeemer :: AuctionEscrowRedeemer
+  , auctionEscrowWrongRedeemer :: AuctionEscrowRedeemer
+  }
+  deriving stock (Show, Eq)
+
+instance Arbitrary ConcludeAuctionTestContext where
+  arbitrary = do
+    GenCurrencySymbol auctionCs <- arbitrary @(GenCurrencySymbol 'WithoutAdaSymbol)
+    sellerKeys <- genKeyPair
+    auctionTerms <- genValidAuctionTerms $ vkey sellerKeys
+    txInfoTemplate <- genTxInfoTemplate
+    standingBidInputOref <- arbitrary @TxOutRef
+    auctionEscrowInputOref <- arbitrary @TxOutRef
+    standingBidAddress <- genScriptAddress
+    auctionEscrowAddress <- genScriptAddress
+    auctionEscrowRedeemer <- elements [BidderBuysRedeemer, SellerReclaimsRedeemer]
+    auctionEscrowWrongRedeemer <- elements [StartBiddingRedeemer, CleanupAuctionRedeemer]
+    pure ConcludeAuctionTestContext {..}
+
 --------------------------------------------------------------------------------
 -- TestConstraints
 --------------------------------------------------------------------------------
 
-data StandingBidInputMode
-  = StandingBidInputValid
-  | StandingBidInputMissing
-  | MultipleStandingBidInputs
-  deriving stock (Show, Eq)
-
-data StandingBidOutputMode
-  = StandingBidOutputValid
-  | StandingBidOutputMissing
-  | MultipleStandingBidOutputs
+data TxOutputMode = TxOutputValid | TxOutputMissing | MultipleTxOutputs
   deriving stock (Show, Eq)
 
 data NewBidStateMode
@@ -326,10 +410,10 @@ data NewBidStateMode
 -- NewBid ------------------------------------------------------------
 
 data NewBidTestConstraints = NewBidTestConstraints
-  { standingBidInputMode :: StandingBidInputMode
+  { standingBidInputMode :: TxOutputMode
   , standingBidInputContainsToken :: Bool
   , mintsBurnsValue :: Bool
-  , standingBidOutputMode :: StandingBidOutputMode
+  , standingBidOutputMode :: TxOutputMode
   , standingBidOutputContainsToken :: Bool
   , newBidStateMode :: NewBidStateMode
   , txHasIncorrectValidRange :: Bool
@@ -339,10 +423,10 @@ data NewBidTestConstraints = NewBidTestConstraints
 instance Default NewBidTestConstraints where
   def =
     NewBidTestConstraints
-      { standingBidInputMode = StandingBidInputValid
+      { standingBidInputMode = TxOutputValid
       , standingBidInputContainsToken = True
       , mintsBurnsValue = False
-      , standingBidOutputMode = StandingBidOutputValid
+      , standingBidOutputMode = TxOutputValid
       , standingBidOutputContainsToken = True
       , newBidStateMode = NewBidStateValid
       , txHasIncorrectValidRange = False
@@ -361,6 +445,23 @@ instance Default MoveToHydraTestConstraints where
     MoveToHydraTestConstraints
       { mh'txSignedByAllDelegates = True
       , mh'txHasIncorrectValidRange = False
+      }
+
+-- ConcludeAuction ---------------------------------------------------
+
+data ConcludeAuctionTestConstraints = ConcludeAuctionTestConstraints
+  { ca'auctionEscrowInputMode :: TxOutputMode
+  , ca'auctionEscrowInputContainsToken :: Bool
+  , ca'spendsAuctionEscrowInputWithWrongRedeemer :: Bool
+  }
+  deriving stock (Show, Eq)
+
+instance Default ConcludeAuctionTestConstraints where
+  def =
+    ConcludeAuctionTestConstraints
+      { ca'auctionEscrowInputMode = TxOutputValid
+      , ca'auctionEscrowInputContainsToken = True
+      , ca'spendsAuctionEscrowInputWithWrongRedeemer = False
       }
 
 --------------------------------------------------------------------------------
@@ -423,14 +524,14 @@ testNewBid NewBidTestContext {..} NewBidTestConstraints {..} =
             txInfoTemplate
               { txInfoInputs =
                   case standingBidInputMode of
-                    StandingBidInputValid -> singleton standingBidInput
-                    StandingBidInputMissing -> mempty
-                    MultipleStandingBidInputs -> replicate 2 standingBidInput
+                    TxOutputValid -> singleton standingBidInput
+                    TxOutputMissing -> mempty
+                    MultipleTxOutputs -> replicate 2 standingBidInput
               , txInfoOutputs =
                   case standingBidOutputMode of
-                    StandingBidOutputValid -> singleton standingBidOutput
-                    StandingBidOutputMissing -> mempty
-                    MultipleStandingBidOutputs -> replicate 2 standingBidOutput
+                    TxOutputValid -> singleton standingBidOutput
+                    TxOutputMissing -> mempty
+                    MultipleTxOutputs -> replicate 2 standingBidOutput
               , txInfoMint = bool mempty invalidMintValue mintsBurnsValue
               , txInfoValidRange
               , txInfoRedeemers = AMap.singleton scriptContextPurpose redeemer
@@ -445,9 +546,6 @@ testNewBid NewBidTestContext {..} NewBidTestConstraints {..} =
 testMoveToHydra :: MoveToHydraTestContext -> MoveToHydraTestConstraints -> Script
 testMoveToHydra MoveToHydraTestContext {..} MoveToHydraTestConstraints {..} =
   let
-    standingBidTokenValue :: Value
-    standingBidTokenValue = mkStandingBidTokenValue auctionCs
-
     bidState :: StandingBidState
     bidState = StandingBidState Nothing
 
@@ -456,7 +554,7 @@ testMoveToHydra MoveToHydraTestContext {..} MoveToHydraTestConstraints {..} =
       TxInInfo standingBidInputOref $
         TxOut
           { txOutAddress = scriptAddress
-          , txOutValue = standingBidTokenValue
+          , txOutValue = mkStandingBidTokenValue auctionCs
           , txOutDatum = OutputDatum $ Datum $ dataToBuiltinData $ toData bidState
           , txOutReferenceScript = Nothing
           }
@@ -492,6 +590,77 @@ testMoveToHydra MoveToHydraTestContext {..} MoveToHydraTestConstraints {..} =
         }
   in
     compile auctionCs auctionTerms bidState moveToHydraRedeemer ctx
+
+-- ConcludeAuction ---------------------------------------------------
+
+testConcludeAuction :: ConcludeAuctionTestContext -> ConcludeAuctionTestConstraints -> Script
+testConcludeAuction ConcludeAuctionTestContext {..} ConcludeAuctionTestConstraints {..} =
+  let
+    bidState :: StandingBidState
+    bidState = StandingBidState Nothing
+
+    standingBidInput :: TxInInfo
+    standingBidInput =
+      TxInInfo standingBidInputOref $
+        TxOut
+          { txOutAddress = standingBidAddress
+          , txOutValue = mkStandingBidTokenValue auctionCs
+          , txOutDatum = OutputDatum $ Datum $ dataToBuiltinData $ toData bidState
+          , txOutReferenceScript = Nothing
+          }
+
+    auctionEscrowTokenValue :: Value
+    auctionEscrowTokenValue = mkAuctionEscrowTokenValue auctionCs
+
+    auctionEscrowInput :: TxInInfo
+    auctionEscrowInput =
+      TxInInfo auctionEscrowInputOref $
+        TxOut
+          { txOutAddress = auctionEscrowAddress
+          , txOutValue =
+              bool mempty auctionEscrowTokenValue ca'auctionEscrowInputContainsToken
+          , txOutDatum = NoOutputDatum
+          , txOutReferenceScript = Nothing
+          }
+
+    concludeAuctionRedeemer :: StandingBidRedeemer
+    concludeAuctionRedeemer = ConcludeAuctionRedeemer
+
+    redeemer :: Redeemer
+    redeemer = Redeemer $ dataToBuiltinData $ toData concludeAuctionRedeemer
+
+    auctionEscrowRedeemer' :: Redeemer
+    auctionEscrowRedeemer' =
+      Redeemer . dataToBuiltinData . toData $
+        bool
+          auctionEscrowRedeemer
+          auctionEscrowWrongRedeemer
+          ca'spendsAuctionEscrowInputWithWrongRedeemer
+
+    scriptContextPurpose :: ScriptPurpose
+    scriptContextPurpose = Spending standingBidInputOref
+
+    ctx :: ScriptContext
+    ctx =
+      ScriptContext
+        { scriptContextTxInfo =
+            txInfoTemplate
+              { txInfoInputs =
+                  standingBidInput
+                    : case ca'auctionEscrowInputMode of
+                      TxOutputValid -> singleton auctionEscrowInput
+                      TxOutputMissing -> mempty
+                      MultipleTxOutputs -> replicate 2 auctionEscrowInput
+              , txInfoRedeemers =
+                  AMap.fromList
+                    [ (scriptContextPurpose, redeemer)
+                    , (Spending auctionEscrowInputOref, auctionEscrowRedeemer')
+                    ]
+              }
+        , scriptContextPurpose
+        }
+  in
+    compile auctionCs auctionTerms bidState concludeAuctionRedeemer ctx
 
 --------------------------------------------------------------------------------
 -- Helpers
