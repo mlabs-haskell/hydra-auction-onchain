@@ -3,6 +3,7 @@
 module Spec.HydraAuctionOnchain.QuickCheck.Gen
   ( KeyPair (..)
   , genKeyPair
+  , genScriptAddress
   , genTxInfoTemplate
   , genValidAuctionTerms
   , genValidBidState
@@ -19,10 +20,13 @@ import Plutarch.Test.QuickCheck.Instances ()
 import PlutusLedgerApi.V1.Interval qualified as Interval (always)
 import PlutusLedgerApi.V1.Value qualified as Value (singleton)
 import PlutusLedgerApi.V2
-  ( BuiltinByteString
+  ( Address (Address)
+  , BuiltinByteString
+  , Credential (ScriptCredential)
   , CurrencySymbol
   , POSIXTime (POSIXTime)
   , PubKeyHash
+  , ScriptHash
   , TxId
   , TxInfo (..)
   , adaSymbol
@@ -63,6 +67,9 @@ genKeyPair =
 
 genIntegerGreaterThan :: Integer -> Gen Integer
 genIntegerGreaterThan a = arbitrary @(Positive Integer) <&> \(Positive b) -> a + b
+
+genScriptAddress :: Gen Address
+genScriptAddress = flip Address Nothing . ScriptCredential <$> arbitrary @ScriptHash
 
 genTxInfoTemplate :: Gen TxInfo
 genTxInfoTemplate = do
@@ -149,7 +156,7 @@ genValidAuctionTerms :: PublicKey -> Gen AuctionTerms
 genValidAuctionTerms vkey = do
   GenNonAdaValue @Positive at'AuctionLot <- arbitrary
   let (at'SellerVk, at'SellerPkh) = hashVerificationKey vkey
-  at'Delegates <- vector @PubKeyHash =<< chooseInt (0, 10)
+  at'Delegates <- vector @PubKeyHash =<< chooseInt (1, 10)
 
   let chooseInterval = POSIXTime <$> chooseInteger (1, 604_800_000) -- up to 1 week in msec
   (biddingPeriod, purchasePeriod, penaltyPeriod) <-
