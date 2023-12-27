@@ -49,6 +49,12 @@ data PAuctionEscrowError (s :: S)
   | AuctionEscrow'SellerReclaims'Error'PaymentToSellerIncorrect
   | AuctionEscrow'SellerReclaims'Error'NoSellerConsent
   | AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect
+  | -- CleanupAuction errors
+    AuctionEscrow'CleanupAuction'Error'AuctionTokensNotBurnedExactly
+  | AuctionEscrow'CleanupAuction'Error'IncorrectValidityInterval
+  | AuctionEscrow'CleanupAuction'Error'NoSellerConsent
+  | AuctionEscrow'CleanupAuction'Error'AuctionIsNotConcluded
+  | AuctionEscrow'CleanupAuction'Error'AuctionEscrowInputMissingStandingBidToken
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 

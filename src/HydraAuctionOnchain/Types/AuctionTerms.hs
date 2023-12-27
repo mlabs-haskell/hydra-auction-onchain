@@ -1,6 +1,7 @@
 module HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms (PAuctionTerms)
   , pbiddingPeriod
+  , pcleanupPeriod
   , ppenaltyPeriod
   , ppurchasePeriod
   , ptotalAuctionFees
@@ -16,6 +17,7 @@ import Plutarch.Api.V2
   , PValue
   )
 import Plutarch.DataRepr (PDataFields)
+import Plutarch.Extra.Interval qualified as Interval (pfrom)
 import Plutarch.Monadic qualified as P
 import Ply.Plutarch (PlyArgOf)
 
@@ -83,3 +85,8 @@ ppenaltyPeriod = phoistAcyclic $
     pintervalFiniteClosedOpen
       # auctionTermsFields.purchaseDeadline
       # auctionTermsFields.cleanup
+
+pcleanupPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
+pcleanupPeriod = phoistAcyclic $
+  plam $ \auctionTerms ->
+    Interval.pfrom #$ pfield @"cleanup" # auctionTerms

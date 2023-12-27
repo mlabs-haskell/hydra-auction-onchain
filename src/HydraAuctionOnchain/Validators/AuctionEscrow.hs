@@ -25,14 +25,16 @@ import HydraAuctionOnchain.Helpers
   , pvaluePaidTo
   , pvaluePaidToScript
   )
+import HydraAuctionOnchain.MintingPolicies.Auction (allAuctionTokensBurned)
 import HydraAuctionOnchain.Types.AuctionEscrowState
-  ( PAuctionEscrowState
+  ( PAuctionEscrowState (AuctionConcluded)
   , pvalidateAuctionEscrowTransitionToAuctionConcluded
   , pvalidateAuctionEscrowTransitionToBiddingStarted
   )
 import HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms
   , pbiddingPeriod
+  , pcleanupPeriod
   , ppenaltyPeriod
   , ppurchasePeriod
   , ptotalAuctionFees
@@ -40,8 +42,15 @@ import HydraAuctionOnchain.Types.AuctionTerms
 import HydraAuctionOnchain.Types.BidTerms (psellerPayout, pvalidateBidTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe, passertMaybeData)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState (PStandingBidState))
-import Plutarch.Api.V1.Value (plovelaceValueOf)
-import Plutarch.Api.V2 (PAddress, PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo)
+import Plutarch.Api.V1.Value (plovelaceValueOf, pnormalize)
+import Plutarch.Api.V2
+  ( PAddress
+  , PCurrencySymbol
+  , PScriptContext
+  , PScriptHash
+  , PTxInInfo
+  , PTxInfo
+  )
 import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.Maybe (pdnothing)
 import Plutarch.Extra.ScriptContext (ptxSignedBy)
@@ -136,7 +145,12 @@ auctionEscrowValidator = phoistAcyclic $
           # oldAuctionState
           # ownAddress
       CleanupAuctionRedeemer _ ->
-        undefined
+        pcheckCleanupAuction
+          # txInfo
+          # auctionCs
+          # auctionTerms
+          # oldAuctionState
+          # ownInput
 
 --------------------------------------------------------------------------------
 -- StartBidding
@@ -454,5 +468,49 @@ pcheckSellerReclaims = phoistAcyclic $
     passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
         #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # feeEscrowSh)
+
+    pcon PUnit
+
+--------------------------------------------------------------------------------
+-- CleanupAuction
+--------------------------------------------------------------------------------
+
+pcheckCleanupAuction
+  :: Term
+      s
+      ( PTxInfo
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PAuctionEscrowState
+          :--> PTxInInfo
+          :--> PUnit
+      )
+pcheckCleanupAuction = phoistAcyclic $
+  plam $ \txInfo auctionCs auctionTerms auctionState ownInput -> P.do
+    txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
+
+    -- (AUES39) The auction state, auction metadata,and standing bid
+    -- tokens of the auction should all be burned. No other tokens
+    -- should be minted or burned.
+    passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionTokensNotBurnedExactly) $
+      pnormalize # txInfoFields.mint #== allAuctionTokensBurned # auctionCs
+
+    -- (AUES40) This redeemer can only be used during the cleanup period.
+    passert $(errCode AuctionEscrow'CleanupAuction'Error'IncorrectValidityInterval) $
+      pcontains # (pcleanupPeriod # auctionTerms) # txInfoFields.validRange
+
+    -- (AUES41) The seller signed the transaction.
+    sellerPkh <- plet $ pfield @"sellerPkh" # auctionTerms
+    passert $(errCode AuctionEscrow'CleanupAuction'Error'NoSellerConsent) $
+      ptxSignedBy # txInfoFields.signatories # pdata sellerPkh
+
+    -- (AUES42) The auction is concluded.
+    passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionIsNotConcluded) $
+      auctionState #== pcon (AuctionConcluded pdnil)
+
+    -- (AUES43) The auction escrow input contains the standing bid
+    -- token in addition to the auction token.
+    passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionEscrowInputMissingStandingBidToken) $
+      ptxOutContainsStandingBidToken # auctionCs #$ pfield @"resolved" # ownInput
 
     pcon PUnit
