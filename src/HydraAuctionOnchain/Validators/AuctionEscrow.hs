@@ -33,6 +33,7 @@ import HydraAuctionOnchain.Types.AuctionEscrowState
 import HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms
   , pbiddingPeriod
+  , ppenaltyPeriod
   , ppurchasePeriod
   , ptotalAuctionFees
   )
@@ -127,7 +128,13 @@ auctionEscrowValidator = phoistAcyclic $
           # oldAuctionState
           # ownAddress
       SellerReclaimsRedeemer _ ->
-        undefined
+        pcheckSellerReclaims
+          # feeEscrowSh
+          # txInfo
+          # auctionCs
+          # auctionTerms
+          # oldAuctionState
+          # ownAddress
       CleanupAuctionRedeemer _ ->
         undefined
 
@@ -332,9 +339,7 @@ pcheckBidderBuys = phoistAcyclic $
     passert $(errCode AuctionEscrow'BidderBuys'Error'AuctionLotNotPaidToBidder) $
       auctionTermsFields.auctionLot #<= pvaluePaidTo # txInfo # bidderPkh
 
-    -- (AUES26) The bidder deposit's bidder consents to the
-    -- transcation either explictly by signing the transaction or
-    -- implicitly by receiving the bid deposit ADA.
+    -- (AUES26) The bidder signed the transaction.
     passert $(errCode AuctionEscrow'BidderBuys'Error'NoBidderConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
@@ -354,6 +359,99 @@ pcheckBidderBuys = phoistAcyclic $
     -- (AUES28) The total auction fees are sent to
     -- the fee escrow validator.
     passert $(errCode AuctionEscrow'BidderBuys'Error'PaymentToFeeEscrowIncorrect) $
+      (ptotalAuctionFees # auctionTerms)
+        #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # feeEscrowSh)
+
+    pcon PUnit
+
+--------------------------------------------------------------------------------
+-- SellerReclaims
+--------------------------------------------------------------------------------
+
+pcheckSellerReclaims
+  :: Term
+      s
+      ( PScriptHash
+          :--> PTxInfo
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PAuctionEscrowState
+          :--> PAddress
+          :--> PUnit
+      )
+pcheckSellerReclaims = phoistAcyclic $
+  plam $ \feeEscrowSh txInfo auctionCs auctionTerms oldAuctionState ownAddress -> P.do
+    txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
+    auctionTermsFields <- pletFields @["auctionLot", "sellerPkh"] auctionTerms
+    let sellerPkh = auctionTermsFields.sellerPkh
+
+    -- (AUES29) There should be no tokens minted or burned.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'UnexpectedTokensMintedBurned) $
+      pfromData txInfoFields.mint #== mempty
+
+    -- (AUES30) This redeemer can only be used during
+    -- the penalty period.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'IncorrectValidityInterval) $
+      pcontains # (ppenaltyPeriod # auctionTerms) # txInfoFields.validRange
+
+    ----------------------------------------------------------------------------
+    -- Check auction escrow state transition
+    ----------------------------------------------------------------------------
+
+    -- (AUES31) There should be exactly one auction escrow output.
+    ownOutput <-
+      plet $
+        passertMaybe
+          $(errCode AuctionEscrow'SellerReclaims'Error'MissingAuctionEscrowOutput)
+          (pfindUniqueOutputWithAddress # ownAddress # txInfo)
+
+    -- (AUES32) The auction escrow output should contain
+    -- the auction escrow token.
+    passert
+      $(errCode AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingAuctionEscrowToken)
+      (ptxOutContainsAuctionEscrowToken # auctionCs # ownOutput)
+
+    -- (AUES33) The auction escrow output should contain
+    -- the standing bid token.
+    passert
+      $(errCode AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingStandingBidToken)
+      (ptxOutContainsStandingBidToken # auctionCs # ownOutput)
+
+    -- (AUES34) The auction escrow output's datum should be decodable
+    -- as an auction escrow state.
+    newAuctionState <-
+      plet $
+        passertMaybe
+          $(errCode AuctionEscrow'SellerReclaims'Error'FailedToDecodeAuctionEscrowState)
+          (pdecodeInlineDatum # ownOutput)
+
+    -- (AUES35) The auction state should transition from
+    -- `BiddingStarted` to `AuctionConcluded`.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'InvalidAuctionStateTransition) $
+      pvalidateAuctionEscrowTransitionToAuctionConcluded
+        # oldAuctionState
+        # newAuctionState
+
+    ----------------------------------------------------------------------------
+    -- Check auction lot transfer back to the seller
+    ----------------------------------------------------------------------------
+
+    -- (AUES36) The auction lot is returned to the seller.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToSellerIncorrect) $
+      auctionTermsFields.auctionLot
+        #<= (pvaluePaidTo # txInfo # sellerPkh)
+
+    -- (AUES37) The seller signed the transaction.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'NoSellerConsent) $
+      ptxSignedBy # txInfoFields.signatories # pdata sellerPkh
+
+    ----------------------------------------------------------------------------
+    -- Check auction fees
+    ----------------------------------------------------------------------------
+
+    -- (AUES38) The total auction fees are sent to
+    -- the fee escrow validator.
+    passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
         #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # feeEscrowSh)
 

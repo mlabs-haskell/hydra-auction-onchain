@@ -38,6 +38,17 @@ data PAuctionEscrowError (s :: S)
   | AuctionEscrow'BidderBuys'Error'NoBidderConsent
   | AuctionEscrow'BidderBuys'Error'SellerPaymentIncorrect
   | AuctionEscrow'BidderBuys'Error'PaymentToFeeEscrowIncorrect
+  | -- SellerReclaims errors
+    AuctionEscrow'SellerReclaims'Error'UnexpectedTokensMintedBurned
+  | AuctionEscrow'SellerReclaims'Error'IncorrectValidityInterval
+  | AuctionEscrow'SellerReclaims'Error'MissingAuctionEscrowOutput
+  | AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingAuctionEscrowToken
+  | AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingStandingBidToken
+  | AuctionEscrow'SellerReclaims'Error'FailedToDecodeAuctionEscrowState
+  | AuctionEscrow'SellerReclaims'Error'InvalidAuctionStateTransition
+  | AuctionEscrow'SellerReclaims'Error'PaymentToSellerIncorrect
+  | AuctionEscrow'SellerReclaims'Error'NoSellerConsent
+  | AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 

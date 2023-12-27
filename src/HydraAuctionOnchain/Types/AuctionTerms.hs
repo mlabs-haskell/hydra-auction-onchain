@@ -1,6 +1,7 @@
 module HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms (PAuctionTerms)
   , pbiddingPeriod
+  , ppenaltyPeriod
   , ppurchasePeriod
   , ptotalAuctionFees
   ) where
@@ -74,3 +75,11 @@ ppurchasePeriod = phoistAcyclic $
     pintervalFiniteClosedOpen
       # auctionTermsFields.biddingEnd
       # auctionTermsFields.purchaseDeadline
+
+ppenaltyPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
+ppenaltyPeriod = phoistAcyclic $
+  plam $ \auctionTerms -> P.do
+    auctionTermsFields <- pletFields @["purchaseDeadline", "cleanup"] auctionTerms
+    pintervalFiniteClosedOpen
+      # auctionTermsFields.purchaseDeadline
+      # auctionTermsFields.cleanup
