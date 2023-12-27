@@ -1,6 +1,8 @@
 module HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms (PAuctionTerms)
   , pbiddingPeriod
+  , ppurchasePeriod
+  , ptotalAuctionFees
   ) where
 
 import HydraAuctionOnchain.Helpers (pintervalFiniteClosedOpen)
@@ -46,6 +48,13 @@ data AuctionTerms
 
 type instance PlyArgOf PAuctionTerms = AuctionTerms
 
+ptotalAuctionFees :: Term s (PAuctionTerms :--> PInteger)
+ptotalAuctionFees = phoistAcyclic $
+  plam $ \auctionTerms -> P.do
+    auctionTermsFields <- pletFields @["delegates", "auctionFeePerDelegate"] auctionTerms
+    (plength # pfromData auctionTermsFields.delegates)
+      * auctionTermsFields.auctionFeePerDelegate
+
 --------------------------------------------------------------------------------
 -- Auction Lifecycle
 --------------------------------------------------------------------------------
@@ -54,4 +63,14 @@ pbiddingPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
 pbiddingPeriod = phoistAcyclic $
   plam $ \auctionTerms -> P.do
     auctionTermsFields <- pletFields @["biddingStart", "biddingEnd"] auctionTerms
-    pintervalFiniteClosedOpen # auctionTermsFields.biddingStart # auctionTermsFields.biddingEnd
+    pintervalFiniteClosedOpen
+      # auctionTermsFields.biddingStart
+      # auctionTermsFields.biddingEnd
+
+ppurchasePeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
+ppurchasePeriod = phoistAcyclic $
+  plam $ \auctionTerms -> P.do
+    auctionTermsFields <- pletFields @["biddingEnd", "purchaseDeadline"] auctionTerms
+    pintervalFiniteClosedOpen
+      # auctionTermsFields.biddingEnd
+      # auctionTermsFields.purchaseDeadline

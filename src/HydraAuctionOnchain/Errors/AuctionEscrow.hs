@@ -21,6 +21,23 @@ data PAuctionEscrowError (s :: S)
   | AuctionEscrow'StartBidding'Error'MissingStandingBidOutput
   | AuctionEscrow'StartBidding'Error'FailedToDecodeStandingBidState
   | AuctionEscrow'StartBidding'Error'InvalidStandingBidState
+  | -- BidderBuys errors
+    AuctionEscrow'BidderBuys'Error'UnexpectedTokensMintedBurned
+  | AuctionEscrow'BidderBuys'Error'IncorrectValidityInterval
+  | AuctionEscrow'BidderBuys'Error'MissingAuctionEscrowOutput
+  | AuctionEscrow'BidderBuys'Error'AuctionEscrowOutputMissingAuctionEscrowToken
+  | AuctionEscrow'BidderBuys'Error'AuctionEscrowOutputMissingStandingBidToken
+  | AuctionEscrow'BidderBuys'Error'FailedToDecodeAuctionEscrowState
+  | AuctionEscrow'BidderBuys'Error'InvalidAuctionStateTransition
+  | AuctionEscrow'BidderBuys'Error'MissingStandingBidInput
+  | AuctionEscrow'BidderBuys'Error'StandingBidInputMissingToken
+  | AuctionEscrow'BidderBuys'Error'FailedToDecodeStandingBidState
+  | AuctionEscrow'BidderBuys'Error'EmptyStandingBid
+  | AuctionEscrow'BidderBuys'Error'BidTermsInvalid
+  | AuctionEscrow'BidderBuys'Error'AuctionLotNotPaidToBidder
+  | AuctionEscrow'BidderBuys'Error'NoBidderConsent
+  | AuctionEscrow'BidderBuys'Error'SellerPaymentIncorrect
+  | AuctionEscrow'BidderBuys'Error'PaymentToFeeEscrowIncorrect
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 

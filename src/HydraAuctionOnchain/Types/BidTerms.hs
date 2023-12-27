@@ -1,10 +1,11 @@
 module HydraAuctionOnchain.Types.BidTerms
   ( PBidTerms (PBidTerms)
+  , psellerPayout
   , pvalidateBidTerms
   ) where
 
 import HydraAuctionOnchain.Helpers (pserialise)
-import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
+import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, ptotalAuctionFees)
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import Plutarch.Api.V2 (PCurrencySymbol, PPubKeyHash)
 import Plutarch.Crypto (pverifyEd25519Signature)
@@ -30,6 +31,17 @@ instance DerivePlutusType PBidTerms where
   type DPTStrat _ = PlutusTypeData
 
 instance PTryFrom PData PBidTerms
+
+psellerPayout :: Term s (PAuctionTerms :--> PBidTerms :--> PInteger)
+psellerPayout = phoistAcyclic $
+  plam $ \auctionTerms bidTerms -> P.do
+    bidPrice <- plet $ pfield @"btPrice" # bidTerms
+    totalAuctionFees <- plet $ ptotalAuctionFees # auctionTerms
+    bidPrice - totalAuctionFees
+
+--------------------------------------------------------------------------------
+-- Validation
+--------------------------------------------------------------------------------
 
 pvalidateBidTerms :: Term s (PCurrencySymbol :--> PAuctionTerms :--> PBidTerms :--> PBool)
 pvalidateBidTerms = phoistAcyclic $
