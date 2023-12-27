@@ -1,5 +1,7 @@
 module HydraAuctionOnchain.Scripts
-  ( auctionMetadataValidatorScript
+  ( auctionEscrowValidatorScript
+  , auctionEscrowValidatorUntyped
+  , auctionMetadataValidatorScript
   , auctionMetadataValidatorUntyped
   , compileScript
   , standingBidValidatorScript
@@ -10,36 +12,48 @@ module HydraAuctionOnchain.Scripts
 import Data.Text (Text)
 import Data.Text qualified as T (unpack)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
+import HydraAuctionOnchain.Validators.AuctionEscrow (auctionEscrowValidator)
 import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Config (Config), Script, TracingMode (DoTracingAndBinds), compile)
-import Plutarch.Api.V2 (PCurrencySymbol, PValidator)
+import Plutarch.Api.V2 (PCurrencySymbol, PScriptHash, PValidator)
 import Plutarch.Unsafe (punsafeCoerce)
 import Ply.Plutarch.TypedWriter (TypedWriter, writeTypedScript)
 
 --------------------------------------------------------------------------------
--- AuctionMetadata
+-- AuctionEscrow
 --------------------------------------------------------------------------------
 
-auctionMetadataValidatorUntyped :: ClosedTerm PValidator
-auctionMetadataValidatorUntyped =
-  phoistAcyclic $ plam $ \datum redeemer ctx ->
+auctionEscrowValidatorUntyped
+  :: ClosedTerm
+      ( PScriptHash
+          :--> PScriptHash
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PValidator
+      )
+auctionEscrowValidatorUntyped = phoistAcyclic $
+  plam $ \standingBidSh feeEscrowSh auctionCs auctionTerms datum redeemer ctx ->
     popaque $
-      auctionMetadataValidator
+      auctionEscrowValidator
+        # standingBidSh
+        # feeEscrowSh
+        # auctionCs
+        # auctionTerms
         # punsafeCoerce datum
         # punsafeCoerce redeemer
         # ctx
 
-auctionMetadataValidatorScript :: Script
-auctionMetadataValidatorScript = compileScript auctionMetadataValidatorUntyped
+auctionEscrowValidatorScript :: Script
+auctionEscrowValidatorScript = compileScript auctionEscrowValidatorUntyped
 
 --------------------------------------------------------------------------------
 -- StandingBid
 --------------------------------------------------------------------------------
 
 standingBidValidatorUntyped :: ClosedTerm (PCurrencySymbol :--> PAuctionTerms :--> PValidator)
-standingBidValidatorUntyped =
-  phoistAcyclic $ plam $ \auctionCs auctionTerms datum redeemer ctx ->
+standingBidValidatorUntyped = phoistAcyclic $
+  plam $ \auctionCs auctionTerms datum redeemer ctx ->
     popaque $
       standingBidValidator
         # auctionCs
@@ -50,6 +64,24 @@ standingBidValidatorUntyped =
 
 standingBidValidatorScript :: Script
 standingBidValidatorScript = compileScript standingBidValidatorUntyped
+
+--------------------------------------------------------------------------------
+-- AuctionMetadata
+--------------------------------------------------------------------------------
+
+auctionMetadataValidatorUntyped :: ClosedTerm PValidator
+auctionMetadataValidatorUntyped = phoistAcyclic $
+  plam $ \datum redeemer ctx ->
+    popaque $
+      auctionMetadataValidator
+        # punsafeCoerce datum
+        # punsafeCoerce redeemer
+        # ctx
+
+auctionMetadataValidatorScript :: Script
+auctionMetadataValidatorScript = compileScript auctionMetadataValidatorUntyped
+
+--
 
 config :: Config
 config = Config DoTracingAndBinds
