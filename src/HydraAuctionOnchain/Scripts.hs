@@ -26,20 +26,20 @@ import Ply.Plutarch.TypedWriter (TypedWriter, writeTypedScript)
 
 auctionEscrowValidatorUntyped
   :: ClosedTerm
-      ( PScriptHash
-          :--> PScriptHash
-          :--> PCurrencySymbol
-          :--> PAuctionTerms
+      ( PAsData PScriptHash
+          :--> PAsData PScriptHash
+          :--> PAsData PCurrencySymbol
+          :--> PAsData PAuctionTerms
           :--> PValidator
       )
 auctionEscrowValidatorUntyped = phoistAcyclic $
   plam $ \standingBidSh feeEscrowSh auctionCs auctionTerms datum redeemer ctx ->
     popaque $
       auctionEscrowValidator
-        # standingBidSh
-        # feeEscrowSh
-        # auctionCs
-        # auctionTerms
+        # pfromData standingBidSh
+        # pfromData feeEscrowSh
+        # pfromData auctionCs
+        # pfromData auctionTerms
         # punsafeCoerce datum
         # punsafeCoerce redeemer
         # ctx
@@ -51,13 +51,18 @@ auctionEscrowValidatorScript = compileScript auctionEscrowValidatorUntyped
 -- StandingBid
 --------------------------------------------------------------------------------
 
-standingBidValidatorUntyped :: ClosedTerm (PCurrencySymbol :--> PAuctionTerms :--> PValidator)
+standingBidValidatorUntyped
+  :: ClosedTerm
+      ( PAsData PCurrencySymbol
+          :--> PAsData PAuctionTerms
+          :--> PValidator
+      )
 standingBidValidatorUntyped = phoistAcyclic $
   plam $ \auctionCs auctionTerms datum redeemer ctx ->
     popaque $
       standingBidValidator
-        # auctionCs
-        # auctionTerms
+        # pfromData auctionCs
+        # pfromData auctionTerms
         # punsafeCoerce datum
         # punsafeCoerce redeemer
         # ctx
