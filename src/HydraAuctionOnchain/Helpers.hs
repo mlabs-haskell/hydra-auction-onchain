@@ -13,17 +13,11 @@ module HydraAuctionOnchain.Helpers
   , pintervalFiniteClosedOpen
   , ponlyOneInputFromAddress
   , pserialise
-  , ptxOutContainsAuctionEscrowToken
-  , ptxOutContainsStandingBidToken
   , putxoAddress
   , pvaluePaidTo
   , pvaluePaidToScript
   ) where
 
-import HydraAuctionOnchain.MintingPolicies.Auction
-  ( auctionEscrowTokenName
-  , standingBidTokenName
-  )
 import Plutarch.Api.V1.Address (PCredential (PPubKeyCredential, PScriptCredential))
 import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2
@@ -180,18 +174,6 @@ ponlyOneInputFromAddress = phoistAcyclic $
 
 pserialise :: PIsData a => Term s (a :--> PByteString)
 pserialise = phoistAcyclic $ plam $ \x -> pserialiseData #$ pforgetData $ pdata x
-
-ptxOutContainsAuctionEscrowToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
-ptxOutContainsAuctionEscrowToken = phoistAcyclic $
-  plam $ \auctionCs txOut ->
-    (pvalueOf # (pfield @"value" # txOut) # auctionCs # auctionEscrowTokenName)
-      #== 1
-
-ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
-ptxOutContainsStandingBidToken = phoistAcyclic $
-  plam $ \auctionCs txOut ->
-    (pvalueOf # (pfield @"value" # txOut) # auctionCs # standingBidTokenName)
-      #== 1
 
 putxoAddress :: Term s (PTxInInfo :--> PAddress)
 putxoAddress = phoistAcyclic $

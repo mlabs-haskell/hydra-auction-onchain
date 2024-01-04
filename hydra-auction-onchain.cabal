@@ -105,7 +105,6 @@ library
     HydraAuctionOnchain.Errors.AuctionEscrow
     HydraAuctionOnchain.Errors.StandingBid
     HydraAuctionOnchain.Helpers
-    HydraAuctionOnchain.MintingPolicies.Auction
     HydraAuctionOnchain.Scripts
     HydraAuctionOnchain.Types.AuctionEscrowState
     HydraAuctionOnchain.Types.AuctionInfo
@@ -114,6 +113,7 @@ library
     HydraAuctionOnchain.Types.BidTerms
     HydraAuctionOnchain.Types.Error
     HydraAuctionOnchain.Types.StandingBidState
+    HydraAuctionOnchain.Types.Tokens
     HydraAuctionOnchain.Validators.AuctionEscrow
     HydraAuctionOnchain.Validators.AuctionMetadata
     HydraAuctionOnchain.Validators.StandingBid

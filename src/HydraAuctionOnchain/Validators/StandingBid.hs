@@ -12,13 +12,15 @@ import HydraAuctionOnchain.Helpers
   , pfindUniqueOutputWithAddress
   , pgetOwnInput
   , ponlyOneInputFromAddress
-  , ptxOutContainsStandingBidToken
   , putxoAddress
   )
-import HydraAuctionOnchain.MintingPolicies.Auction (auctionEscrowTokenName)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
+import HydraAuctionOnchain.Types.Tokens
+  ( auctionEscrowTokenName
+  , ptxOutContainsStandingBidToken
+  )
 import HydraAuctionOnchain.Validators.AuctionEscrow (pisConcluding)
 import Plutarch.Api.V2
   ( PCurrencySymbol

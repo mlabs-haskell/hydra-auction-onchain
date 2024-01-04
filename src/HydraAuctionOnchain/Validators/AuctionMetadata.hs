@@ -2,12 +2,12 @@ module HydraAuctionOnchain.Validators.AuctionMetadata
   ( auctionMetadataValidator
   ) where
 
-import HydraAuctionOnchain.MintingPolicies.Auction
+import HydraAuctionOnchain.Types.AuctionInfo (PAuctionInfo)
+import HydraAuctionOnchain.Types.Tokens
   ( auctionEscrowTokenName
   , auctionMetadataTokenName
   , standingBidTokenName
   )
-import HydraAuctionOnchain.Types.AuctionInfo (PAuctionInfo)
 import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2 (PScriptContext)
 import Plutarch.Extra.Bool (passert)

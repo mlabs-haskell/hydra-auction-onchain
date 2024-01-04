@@ -19,13 +19,10 @@ import HydraAuctionOnchain.Helpers
   , pfindUniqueOutputWithScriptHash
   , pgetOwnInput
   , ponlyOneInputFromAddress
-  , ptxOutContainsAuctionEscrowToken
-  , ptxOutContainsStandingBidToken
   , putxoAddress
   , pvaluePaidTo
   , pvaluePaidToScript
   )
-import HydraAuctionOnchain.MintingPolicies.Auction (allAuctionTokensBurned)
 import HydraAuctionOnchain.Types.AuctionEscrowState
   ( PAuctionEscrowState (AuctionConcluded)
   , pvalidateAuctionEscrowTransitionToAuctionConcluded
@@ -42,6 +39,11 @@ import HydraAuctionOnchain.Types.AuctionTerms
 import HydraAuctionOnchain.Types.BidTerms (psellerPayout, pvalidateBidTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe, passertMaybeData)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState (PStandingBidState))
+import HydraAuctionOnchain.Types.Tokens
+  ( pallAuctionTokensBurned
+  , ptxOutContainsAuctionEscrowToken
+  , ptxOutContainsStandingBidToken
+  )
 import Plutarch.Api.V1.Value (plovelaceValueOf, pnormalize)
 import Plutarch.Api.V2
   ( PAddress
@@ -493,7 +495,7 @@ pcheckCleanupAuction = phoistAcyclic $
     -- tokens of the auction should all be burned. No other tokens
     -- should be minted or burned.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionTokensNotBurnedExactly) $
-      pnormalize # txInfoFields.mint #== allAuctionTokensBurned # auctionCs
+      pnormalize # txInfoFields.mint #== pallAuctionTokensBurned # auctionCs
 
     -- (AUES40) This redeemer can only be used during the cleanup period.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'IncorrectValidityInterval) $
