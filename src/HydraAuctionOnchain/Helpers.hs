@@ -1,38 +1,66 @@
 {-# LANGUAGE PackageImports #-}
 
 module HydraAuctionOnchain.Helpers
-  ( pdecodeInlineDatum
+  ( paddressHasPubKeyHash
+  , paddressHasScriptHash
+  , pdecodeInlineDatum
   , pfindUnique
+  , pfindUniqueInputWithScriptHash
   , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
+  , pfindUniqueOutputWithScriptHash
   , pgetOwnInput
   , pintervalFiniteClosedOpen
   , ponlyOneInputFromAddress
   , pserialise
   , putxoAddress
+  , pvaluePaidTo
+  , pvaluePaidToScript
   ) where
 
+import Plutarch.Api.V1.Address (PCredential (PPubKeyCredential, PScriptCredential))
 import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2
-  ( PAddress
+  ( AmountGuarantees (Positive)
+  , KeyGuarantees (Sorted)
+  , PAddress
   , PCurrencySymbol
   , PExtended (PFinite)
   , PInterval (PInterval)
   , PLowerBound (PLowerBound)
   , POutputDatum (POutputDatum)
+  , PPubKeyHash
   , PScriptContext
+  , PScriptHash
   , PScriptPurpose (PSpending)
   , PTokenName
   , PTxInInfo
   , PTxInfo
   , PTxOut
   , PUpperBound (PUpperBound)
+  , PValue
   )
 import Plutarch.Builtin (pforgetData, pserialiseData)
 import Plutarch.Extra.Maybe (pjust, pnothing)
 import Plutarch.Extra.ScriptContext (pfromPDatum)
 import Plutarch.Monadic qualified as P
 import "liqwid-plutarch-extra" Plutarch.Extra.List (pfromSingleton)
+
+paddressHasPubKeyHash :: Term s (PAddress :--> PPubKeyHash :--> PBool)
+paddressHasPubKeyHash = phoistAcyclic $
+  plam $ \addr pkh -> P.do
+    credential <- plet $ pfield @"credential" #$ pto addr
+    pmatch credential $ \case
+      PPubKeyCredential rec -> pfield @"_0" # rec #== pkh
+      PScriptCredential _ -> pcon PFalse
+
+paddressHasScriptHash :: Term s (PAddress :--> PScriptHash :--> PBool)
+paddressHasScriptHash = phoistAcyclic $
+  plam $ \addr sh -> P.do
+    credential <- plet $ pfield @"credential" #$ pto addr
+    pmatch credential $ \case
+      PScriptCredential rec -> pfield @"_0" # rec #== sh
+      PPubKeyCredential _ -> pcon PFalse
 
 pdecodeInlineDatum :: PTryFrom PData a => Term s (PTxOut :--> PMaybe a)
 pdecodeInlineDatum = phoistAcyclic $
@@ -47,6 +75,18 @@ pfindUnique :: PIsListLike l a => Term s ((a :--> PBool) :--> l a :--> PMaybe a)
 pfindUnique = phoistAcyclic $
   plam $ \predicate list ->
     pfromSingleton #$ pfilter # predicate # list
+
+pfindUniqueInputWithScriptHash :: Term s (PScriptHash :--> PTxInfo :--> PMaybe PTxInInfo)
+pfindUniqueInputWithScriptHash = phoistAcyclic $
+  plam $ \sh txInfo ->
+    pfindUnique
+      # plam
+        ( \utxo -> P.do
+            addr <- plet $ pfield @"address" #$ pfield @"resolved" # utxo
+            paddressHasScriptHash # addr # sh
+        )
+      #$ pfield @"inputs"
+      # txInfo
 
 pfindUniqueInputWithToken
   :: Term
@@ -71,6 +111,14 @@ pfindUniqueOutputWithAddress = phoistAcyclic $
   plam $ \addr txInfo ->
     pfindUnique
       # plam (\out -> (pfield @"address" # out) #== addr)
+      #$ pfield @"outputs"
+      # txInfo
+
+pfindUniqueOutputWithScriptHash :: Term s (PScriptHash :--> PTxInfo :--> PMaybe PTxOut)
+pfindUniqueOutputWithScriptHash = phoistAcyclic $
+  plam $ \sh txInfo ->
+    pfindUnique
+      # plam (\out -> paddressHasScriptHash # (pfield @"address" # out) # sh)
       #$ pfield @"outputs"
       # txInfo
 
@@ -131,3 +179,32 @@ putxoAddress :: Term s (PTxInInfo :--> PAddress)
 putxoAddress = phoistAcyclic $
   plam $ \utxo ->
     pfield @"address" #$ pfield @"resolved" # utxo
+
+pvaluePaidToGeneric
+  :: Term
+      s
+      ( PTxInfo
+          :--> a
+          :--> (PAddress :--> a :--> PBool)
+          :--> PValue 'Sorted 'Positive
+      )
+pvaluePaidToGeneric = phoistAcyclic $
+  plam $ \txInfo x p ->
+    pfoldl
+      # plam
+        ( \accValue utxo -> P.do
+            utxoFields <- pletFields @["address", "value"] utxo
+            pif (p # utxoFields.address # x) (accValue <> utxoFields.value) accValue
+        )
+      # mempty
+      # (pfromData $ pfield @"outputs" # txInfo)
+
+pvaluePaidTo :: Term s (PTxInfo :--> PPubKeyHash :--> PValue 'Sorted 'Positive)
+pvaluePaidTo = phoistAcyclic $
+  plam $ \txInfo pkh ->
+    pvaluePaidToGeneric # txInfo # pkh # paddressHasPubKeyHash
+
+pvaluePaidToScript :: Term s (PTxInfo :--> PScriptHash :--> PValue 'Sorted 'Positive)
+pvaluePaidToScript = phoistAcyclic $
+  plam $ \txInfo sh ->
+    pvaluePaidToGeneric # txInfo # sh # paddressHasScriptHash

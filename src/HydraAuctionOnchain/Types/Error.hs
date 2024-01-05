@@ -7,6 +7,7 @@ module HydraAuctionOnchain.Types.Error
   , errCode
   , passert
   , passertMaybe
+  , passertMaybeData
   ) where
 
 import Data.List (elemIndex)
@@ -15,8 +16,9 @@ import Data.Text (Text)
 import Data.Text qualified as Text (pack, stripPrefix, unpack)
 import Data.Universe (Universe (universe))
 import Language.Haskell.TH (Exp (LitE), Lit (StringL), Q)
+import Plutarch.Api.V2 (PMaybeData)
 import Plutarch.Extra.Bool (passert)
-import Plutarch.Extra.Maybe (passertPJust)
+import Plutarch.Extra.Maybe (passertPDJust, passertPJust)
 import Safe (atMay)
 
 -- | Prefix an error code with a short text tag.
@@ -61,3 +63,6 @@ errCode e = pure (LitE (StringL (Text.unpack (toErrorCode e))))
 
 passertMaybe :: Text -> Term s (PMaybe a) -> Term s a
 passertMaybe err mval = passertPJust # pconstant err # mval
+
+passertMaybeData :: PIsData a => Text -> Term s (PMaybeData a) -> Term s a
+passertMaybeData err mval = passertPDJust # pconstant err # mval

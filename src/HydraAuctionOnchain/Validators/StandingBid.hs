@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module HydraAuctionOnchain.Validators.StandingBid
-  ( standingBidValidator
+  ( PStandingBidRedeemer (NewBidRedeemer, MoveToHydraRedeemer, ConcludeAuctionRedeemer)
+  , standingBidValidator
   ) where
 
 import HydraAuctionOnchain.Errors.StandingBid (PStandingBidError (..))
@@ -13,22 +14,20 @@ import HydraAuctionOnchain.Helpers
   , ponlyOneInputFromAddress
   , putxoAddress
   )
-import HydraAuctionOnchain.MintingPolicies.Auction
-  ( auctionEscrowTokenName
-  , standingBidTokenName
-  )
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
+import HydraAuctionOnchain.Types.Tokens
+  ( auctionEscrowTokenName
+  , ptxOutContainsStandingBidToken
+  )
 import HydraAuctionOnchain.Validators.AuctionEscrow (pisConcluding)
-import Plutarch.Api.V1.Value (pvalueOf)
 import Plutarch.Api.V2
   ( PCurrencySymbol
   , PScriptContext
   , PScriptPurpose (PSpending)
   , PTxInInfo
   , PTxInfo
-  , PTxOut
   )
 import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.Maybe (pmaybe)
@@ -88,6 +87,7 @@ standingBidValidator = phoistAcyclic $
     passert $(errCode StandingBid'Error'UnexpectedTokensMintedBurned) $
       pfromData mintValue #== mempty
 
+    -- Branching checks based on the redeemer used.
     pmatch redeemer $ \case
       NewBidRedeemer _ ->
         pcheckNewBid # txInfo # auctionCs # auctionTerms # ownInput # oldBidState
@@ -119,7 +119,7 @@ pcheckNewBid = phoistAcyclic $
           $(errCode StandingBid'NewBid'Error'MissingOwnOutput)
           (pfindUniqueOutputWithAddress # (putxoAddress # ownInput) # txInfo)
 
-    -- (STBD5) The standing bid output should contain the standing
+    -- (STBD5) The standing bid output should contain a standing
     -- bid token.
     passert $(errCode StandingBid'NewBid'Error'OwnOutputMissingToken) $
       ptxOutContainsStandingBidToken # auctionCs # ownOutput
@@ -137,8 +137,8 @@ pcheckNewBid = phoistAcyclic $
     passert $(errCode StandingBid'NewBid'Error'InvalidNewBidState) $
       pvalidateNewBid # auctionCs # auctionTerms # oldBidState # newBidState
 
-    -- (STBD8) The transaction validity should end before the
-    -- bidding end time.
+    -- (STBD8) This redeemer can only be used during
+    -- the bidding period.
     txInfoValidRange <- plet $ pfield @"validRange" # txInfo
     passert $(errCode StandingBid'NewBid'Error'IncorrectValidityInterval) $
       pcontains # (pbiddingPeriod # auctionTerms) # txInfoValidRange
@@ -159,8 +159,8 @@ pcheckMoveToHydra = phoistAcyclic $
     passert $(errCode StandingBid'MoveToHydra'Error'MissingDelegateSignatures) $
       pall # plam (\sig -> ptxSignedBy # txInfoFields.signatories # sig) # delegates
 
-    -- (STBD10) The transaction validity should end before the
-    -- bidding end time.
+    -- (STBD10) This redeemer can only be used during
+    -- the bidding period.
     passert $(errCode StandingBid'MoveToHydra'Error'IncorrectValidityInterval) $
       pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
 
@@ -196,13 +196,3 @@ pcheckConcludeAuction = phoistAcyclic $
         # auctionEscrowRedeemer
 
     pcon PUnit
-
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
-ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
-ptxOutContainsStandingBidToken = phoistAcyclic $
-  plam $ \auctionCs txOut ->
-    (pvalueOf # (pfield @"value" # txOut) # auctionCs # standingBidTokenName)
-      #== 1

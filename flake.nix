@@ -3,12 +3,17 @@
 
   nixConfig = {
     bash-prompt = "\\[\\e[0m\\][\\[\\e[0;2m\\]nix-develop \\[\\e[0;1m\\]hydra-auction-onchain@\\[\\033[33m\\]$(git rev-parse --abbrev-ref HEAD) \\[\\e[0;32m\\]\\w\\[\\e[0m\\]]\\[\\e[0m\\]$ \\[\\e[0m\\]";
-    extra-experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
-    extra-substituters = [ "https://cache.iog.io" "https://mlabs.cachix.org" ];
-    extra-trusted-public-keys = [ "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" ];
+    extra-substituters = [
+      "https://hydra-node.cachix.org"
+      "https://cardano-scaling.cachix.org"
+      "https://cache.zw3rk.com"
+    ];
+    extra-trusted-public-keys = [
+      "hydra-node.cachix.org-1:vK4mOEQDQKl9FTbq76NjOuNaRD4pZLxi1yri31HHmIw="
+      "cardano-scaling.cachix.org-1:RKvHKhGs/b6CBDqzKbDk0Rv6sod2kPSXLwPzcUQg9lY="
+      "loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk="
+    ];
     allow-import-from-derivation = "true";
-    max-jobs = "auto";
-    auto-optimise-store = "true";
   };
 
   inputs = {
@@ -25,6 +30,7 @@
         inputs.liqwid-nix.flakeModule
       ];
       systems = [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" "aarch64-linux" ];
+      herculesCI.ciSystems = [ "x86_64-linux" ];
       perSystem = { config, self', inputs', pkgs, system, ... }:
         let
           pkgs = import inputs.nixpkgs-latest { inherit system; };

@@ -102,16 +102,18 @@ common common-lang
 library
   import:          common-lang
   exposed-modules:
+    HydraAuctionOnchain.Errors.AuctionEscrow
     HydraAuctionOnchain.Errors.StandingBid
     HydraAuctionOnchain.Helpers
-    HydraAuctionOnchain.MintingPolicies.Auction
     HydraAuctionOnchain.Scripts
+    HydraAuctionOnchain.Types.AuctionEscrowState
     HydraAuctionOnchain.Types.AuctionInfo
     HydraAuctionOnchain.Types.AuctionTerms
     HydraAuctionOnchain.Types.BidderInfo
     HydraAuctionOnchain.Types.BidTerms
     HydraAuctionOnchain.Types.Error
     HydraAuctionOnchain.Types.StandingBidState
+    HydraAuctionOnchain.Types.Tokens
     HydraAuctionOnchain.Validators.AuctionEscrow
     HydraAuctionOnchain.Validators.AuctionMetadata
     HydraAuctionOnchain.Validators.StandingBid
@@ -145,3 +147,38 @@ executable hydra-auction-onchain-exe
   other-modules:
   hs-source-dirs: app
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+test-suite hydra-auction-onchain-test
+  import:         common-lang
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Spec.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+  other-modules:
+    Spec.HydraAuctionOnchain.Expectations
+    Spec.HydraAuctionOnchain.Helpers
+    Spec.HydraAuctionOnchain.QuickCheck.Gen
+    Spec.HydraAuctionOnchain.QuickCheck.Modifiers
+    Spec.HydraAuctionOnchain.Types.AuctionTerms
+    Spec.HydraAuctionOnchain.Types.BidderInfo
+    Spec.HydraAuctionOnchain.Types.BidTerms
+    Spec.HydraAuctionOnchain.Types.Redeemers
+    Spec.HydraAuctionOnchain.Types.StandingBidState
+    Spec.HydraAuctionOnchain.Validators.StandingBid
+
+  build-depends:
+    , bytestring
+    , cryptonite
+    , data-default
+    , hydra-auction-onchain
+    , memory
+    , plutarch
+    , plutarch-quickcheck
+    , plutus-ledger-api
+    , plutus-tx
+    , pretty-simple
+    , QuickCheck
+    , tasty
+    , tasty-expected-failure
+    , tasty-quickcheck
+    , text
