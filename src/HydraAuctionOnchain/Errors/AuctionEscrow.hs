@@ -7,7 +7,8 @@ import HydraAuctionOnchain.Types.Error (ErrorCodePrefix (errorCodePrefix))
 
 data PAuctionEscrowError (s :: S)
   = -- Common errors
-    AuctionEscrow'Error'MissingAuctionEscrowInput
+    AuctionEscrow'Error'InvalidSellerAddress
+  | AuctionEscrow'Error'MissingAuctionEscrowInput
   | AuctionEscrow'Error'TooManyOwnScriptInputs
   | AuctionEscrow'Error'OwnInputMissingToken
   | -- StartBidding errors
@@ -33,6 +34,7 @@ data PAuctionEscrowError (s :: S)
   | AuctionEscrow'BidderBuys'Error'StandingBidInputMissingToken
   | AuctionEscrow'BidderBuys'Error'FailedToDecodeStandingBidState
   | AuctionEscrow'BidderBuys'Error'EmptyStandingBid
+  | AuctionEscrow'BidderBuys'Error'InvalidBidderAddress
   | AuctionEscrow'BidderBuys'Error'BidTermsInvalid
   | AuctionEscrow'BidderBuys'Error'AuctionLotNotPaidToBidder
   | AuctionEscrow'BidderBuys'Error'NoBidderConsent

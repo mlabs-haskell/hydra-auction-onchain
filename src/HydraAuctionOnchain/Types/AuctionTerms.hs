@@ -11,6 +11,7 @@ import HydraAuctionOnchain.Helpers (pintervalFiniteClosedOpen)
 import Plutarch.Api.V2
   ( AmountGuarantees (Positive)
   , KeyGuarantees (Sorted)
+  , PAddress
   , PPOSIXTime
   , PPOSIXTimeRange
   , PPubKeyHash
@@ -27,7 +28,7 @@ newtype PAuctionTerms (s :: S)
           s
           ( PDataRecord
               '[ "auctionLot" ':= PValue 'Sorted 'Positive
-               , "sellerPkh" ':= PPubKeyHash
+               , "sellerAddress" ':= PAddress
                , "sellerVk" ':= PByteString
                , "delegates" ':= PBuiltinList (PAsData PPubKeyHash)
                , "biddingStart" ':= PPOSIXTime

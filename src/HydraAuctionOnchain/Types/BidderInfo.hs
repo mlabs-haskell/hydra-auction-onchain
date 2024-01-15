@@ -2,7 +2,7 @@ module HydraAuctionOnchain.Types.BidderInfo
   ( PBidderInfo (PBidderInfo)
   ) where
 
-import Plutarch.Api.V2 (PPubKeyHash)
+import Plutarch.Api.V2 (PAddress)
 import Plutarch.DataRepr (PDataFields)
 
 data PBidderInfo (s :: S)
@@ -10,7 +10,7 @@ data PBidderInfo (s :: S)
       ( Term
           s
           ( PDataRecord
-              '[ "biBidderPkh" ':= PPubKeyHash
+              '[ "biBidderAddress" ':= PAddress
                , "biBidderVk" ':= PByteString
                ]
           )

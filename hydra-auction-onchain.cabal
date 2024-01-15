@@ -105,6 +105,9 @@ library
     HydraAuctionOnchain.Errors.AuctionEscrow
     HydraAuctionOnchain.Errors.StandingBid
     HydraAuctionOnchain.Helpers
+    HydraAuctionOnchain.Lib.Address
+    HydraAuctionOnchain.Lib.Cose
+    HydraAuctionOnchain.Lib.Serialization
     HydraAuctionOnchain.Scripts
     HydraAuctionOnchain.Types.AuctionEscrowState
     HydraAuctionOnchain.Types.AuctionInfo

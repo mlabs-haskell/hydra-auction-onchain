@@ -14,7 +14,7 @@ module HydraAuctionOnchain.Helpers
   , ponlyOneInputFromAddress
   , pserialise
   , putxoAddress
-  , pvaluePaidTo
+  , pvaluePaidToAddr
   , pvaluePaidToScript
   ) where
 
@@ -180,31 +180,29 @@ putxoAddress = phoistAcyclic $
   plam $ \utxo ->
     pfield @"address" #$ pfield @"resolved" # utxo
 
-pvaluePaidToGeneric
-  :: Term
-      s
-      ( PTxInfo
-          :--> a
-          :--> (PAddress :--> a :--> PBool)
-          :--> PValue 'Sorted 'Positive
-      )
-pvaluePaidToGeneric = phoistAcyclic $
-  plam $ \txInfo x p ->
+pvaluePaidToAddr :: Term s (PTxInfo :--> PAddress :--> PValue 'Sorted 'Positive)
+pvaluePaidToAddr =
+  plam $ \txInfo addr ->
     pfoldl
       # plam
         ( \accValue utxo -> P.do
             utxoFields <- pletFields @["address", "value"] utxo
-            pif (p # utxoFields.address # x) (accValue <> utxoFields.value) accValue
+            pif (utxoFields.address #== addr) (accValue <> utxoFields.value) accValue
         )
       # mempty
       # (pfromData $ pfield @"outputs" # txInfo)
 
-pvaluePaidTo :: Term s (PTxInfo :--> PPubKeyHash :--> PValue 'Sorted 'Positive)
-pvaluePaidTo = phoistAcyclic $
-  plam $ \txInfo pkh ->
-    pvaluePaidToGeneric # txInfo # pkh # paddressHasPubKeyHash
-
 pvaluePaidToScript :: Term s (PTxInfo :--> PScriptHash :--> PValue 'Sorted 'Positive)
-pvaluePaidToScript = phoistAcyclic $
+pvaluePaidToScript =
   plam $ \txInfo sh ->
-    pvaluePaidToGeneric # txInfo # sh # paddressHasScriptHash
+    pfoldl
+      # plam
+        ( \accValue utxo -> P.do
+            utxoFields <- pletFields @["address", "value"] utxo
+            pif
+              (paddressHasScriptHash # utxoFields.address # sh)
+              (accValue <> utxoFields.value)
+              accValue
+        )
+      # mempty
+      # (pfromData $ pfield @"outputs" # txInfo)
