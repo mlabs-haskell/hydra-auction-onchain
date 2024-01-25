@@ -40,9 +40,9 @@ data PSerializedAddress (s :: S)
 instance DerivePlutusType PSerializedAddress where
   type DPTStrat _ = PlutusTypeData
 
-pserializeAddress :: Term s (PAddress :--> PMaybe PSerializedAddress)
+pserializeAddress :: Term s (PBool :--> PAddress :--> PMaybe PSerializedAddress)
 pserializeAddress = phoistAcyclic $
-  plam $ \addr ->
+  plam $ \isMainnet addr ->
     pmatch (pmkAddrConfig # addr) $ \case
       PNothing -> pnothing
       PJust addrConfig -> P.do
@@ -52,7 +52,7 @@ pserializeAddress = phoistAcyclic $
             mconcat
               [ phexByteStr "58" -- byte string (one-byte uint8_t for n, and then n bytes follow)
               , addrSize
-              , paddrConfigAddrHeaderForTestnet # addrConfig
+              , paddrConfigAddrHeaderForTestnet # isMainnet # addrConfig
               , paddrConfigAddrBody # addrConfig
               ]
         pjust #$ pcon $
@@ -103,19 +103,22 @@ paddrConfigAddrSize = phoistAcyclic $
 -- Get hex-encoded network tag + header type for given address
 -- configuration.
 -- https://github.com/cardano-foundation/CIPs/blob/d66f7d0a0bcd06c425a6b7a41c6d18c922deff7e/CIP-0019/README.md?plain=1#L70-L93
-paddrConfigAddrHeaderForTestnet :: Term s (PAddressConfiguration :--> PByteString)
+paddrConfigAddrHeaderForTestnet :: Term s (PBool :--> PAddressConfiguration :--> PByteString)
 paddrConfigAddrHeaderForTestnet = phoistAcyclic $
-  plam $ \addrConfig ->
+  plam $ \isMainnet addrConfig ->
     pmatch addrConfig $ \case
       PAddressConfig'PaymentKeyHash'StakeKeyHash _ _ ->
-        -- 0x00 = 0b0000_0000
-        phexByteStr "00"
+        -- 0x01 = 0b0000_0001 for mainnet
+        -- 0x00 = 0b0000_0000 for testnet
+        pif isMainnet (phexByteStr "01") $ phexByteStr "00"
       PAddressConfig'PaymentKeyHash'ScriptHash _ _ ->
-        -- 0x20 = 0b0010_0000
-        phexByteStr "20"
+        -- 0x21 = 0b0010_0001 for mainnet
+        -- 0x20 = 0b0010_0000 for testnet
+        pif isMainnet (phexByteStr "21") $ phexByteStr "20"
       PAddressConfig'PaymentKeyHash _ ->
-        -- 0x60 = 0b0110_0000
-        phexByteStr "60"
+        -- 0x61 = 0b0110_0001 for mainnet
+        -- 0x60 = 0b0110_0000 for testnet
+        pif isMainnet (phexByteStr "61") $ phexByteStr "60"
 
 paddrConfigAddrBody :: Term s (PAddressConfiguration :--> PByteString)
 paddrConfigAddrBody = phoistAcyclic $

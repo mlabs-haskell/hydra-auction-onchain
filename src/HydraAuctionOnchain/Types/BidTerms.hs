@@ -8,13 +8,11 @@ module HydraAuctionOnchain.Types.BidTerms
 
 import HydraAuctionOnchain.Helpers (pserialise)
 import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHashUnsafe)
-import HydraAuctionOnchain.Lib.Cose (pmkSigStructure)
+import HydraAuctionOnchain.Lib.Cose (pverifyCoseSignature)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, ptotalAuctionFees)
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import Plutarch.Api.V2 (PCurrencySymbol, PPubKeyHash)
-import Plutarch.Crypto (pverifyEd25519Signature)
 import Plutarch.DataRepr (PDataFields)
-import Plutarch.Maybe (pfromJust)
 import Plutarch.Monadic qualified as P
 import "liqwid-plutarch-extra" Plutarch.Extra.List (preplicate)
 
@@ -61,41 +59,47 @@ pvalidateBidTerms = phoistAcyclic $
 
     let sellerSignature = bidTermsFields.btSellerSignature
     sellerVk <- plet $ pfield @"sellerVk" # auctionTerms
-    sellerSigMsg <-
+    sellerSigMessage <-
       plet $
         sellerSignatureMessage
           # auctionCs
           # bidderInfo.biBidderVk
 
-    sellerSigStruct <-
-      plet $ pfromJust #$ pmkSigStructure # sellerAddr # sellerSigMsg # sellerSigMsgLengthHex
-
     let
       bidderSignature = bidTermsFields.btBidderSignature
       bidderVk = bidderInfo.biBidderVk
       bidderAddr = bidderInfo.biBidderAddress
-    bidderSigMsg <-
+    bidderSigMessage <-
       plet $
         bidderSignatureMessage
           # auctionCs
           # bidTermsFields.btPrice
           # (paddrPaymentKeyHashUnsafe # bidderAddr)
 
-    bidderSigStruct <-
-      plet $ pfromJust #$ pmkSigStructure # bidderAddr # bidderSigMsg # bidderSigMsgLengthHex
-
     -- The seller authorized the bidder to participate in the auction.
-    (pverifyEd25519Signature # sellerVk # sellerSigStruct # sellerSignature)
+    ( pverifyCoseSignature
+        # sellerSignature
+        # sellerVk
+        # sellerAddr
+        # sellerSigMessage
+        # sellerSigMessageLengthHex
+      )
       -- The bidder authorized the bid to be submitted in the auction.
-      #&& (pverifyEd25519Signature # bidderVk # bidderSigStruct # bidderSignature)
+      #&& ( pverifyCoseSignature
+              # bidderSignature
+              # bidderVk
+              # bidderAddr
+              # bidderSigMessage
+              # bidderSigMessageLengthHex
+          )
 
-bidderSigMsgLengthHex :: Term s PByteString
-bidderSigMsgLengthHex =
+bidderSigMessageLengthHex :: Term s PByteString
+bidderSigMessageLengthHex =
   -- 69 = 2 (cbor) + 28 (cs) + 2 (cbor) + 28 (pkh) + 9 (lovelace)
   phoistAcyclic $ phexByteStr "45"
 
-sellerSigMsgLengthHex :: Term s PByteString
-sellerSigMsgLengthHex =
+sellerSigMessageLengthHex :: Term s PByteString
+sellerSigMessageLengthHex =
   -- 64 = 2 (cbor) + 28 (cs) + 2 (cbor) + 32 (vk)
   phoistAcyclic $ phexByteStr "40"
 
