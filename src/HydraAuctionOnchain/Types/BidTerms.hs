@@ -2,6 +2,7 @@
 
 module HydraAuctionOnchain.Types.BidTerms
   ( PBidTerms (PBidTerms)
+  , bidderSigMessageLength
   , psellerPayout
   , pvalidateBidTerms
   ) where
@@ -93,6 +94,15 @@ pvalidateBidTerms = phoistAcyclic $
               # bidderSigMessageLengthHex
           )
 
+-- Maximum (reasonable) size of the bidder signature message where
+-- bidPrice is set to the total supply of ADA (45 billion).
+--
+-- Note, that the bid price is the only component of the message that
+-- has variable size; and for lower bid prices the message is padded
+-- with zero bytes at the beginning to reach this size.
+bidderSigMessageLength :: Integer
+bidderSigMessageLength = 69
+
 bidderSigMessageLengthHex :: Term s PByteString
 bidderSigMessageLengthHex =
   -- 69 = 2 (cbor) + 28 (cs) + 2 (cbor) + 28 (pkh) + 9 (lovelace)
@@ -113,7 +123,7 @@ bidderSignatureMessage
       )
 bidderSignatureMessage = phoistAcyclic $
   plam $ \auctionCs bidPrice bidderPkh ->
-    padMessage # 69 #$ (pserialise # auctionCs)
+    padMessage # pconstant bidderSigMessageLength #$ (pserialise # auctionCs)
       <> (pserialise # bidderPkh)
       <> (pserialise # bidPrice)
 

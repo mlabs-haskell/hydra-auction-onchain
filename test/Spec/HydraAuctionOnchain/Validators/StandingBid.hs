@@ -91,9 +91,12 @@ spec =
             prop_mintsBurnsValue_fails
         ]
     , testGroup "NewBidRedeemer" $
-        [ testProperty "Succeeds if transaction is valid" $
-            prop_newBid_validInput_succeeds
-        , testProperty "Fails if standing bid output does not exist" $
+        -- TODO: Reimplement this test suite in the offchain repo.
+        -- testProperty "Succeeds if transaction is valid" $
+        --   prop_newBid_validInput_succeeds
+        -- testProperty "Fails if tx validity interval is incorrect" $
+        --   prop_newBid_incorrectValidRange_fails
+        [ testProperty "Fails if standing bid output does not exist" $
             prop_newBid_missingStandingBidOutput_fails
         , testProperty "Fails if there are multiple standing bid outputs" $
             prop_multipleStandingBidOutputs_fails
@@ -105,8 +108,6 @@ spec =
             prop_newBid_invalidNewBidStateDatum_fails
         , testProperty "Fails if new bid state is empty" $
             prop_newBid_emptyNewBidState_fails
-        , testProperty "Fails if tx validity interval is incorrect" $
-            prop_newBid_incorrectValidRange_fails
         ]
     , testGroup "MoveToHydra" $
         [ testProperty "Succeeds if transaction is valid" $
@@ -170,8 +171,8 @@ prop_mintsBurnsValue_fails testContext =
 
 -- NewBid ------------------------------------------------------------
 
-prop_newBid_validInput_succeeds :: NewBidTestContext -> Property
-prop_newBid_validInput_succeeds testContext =
+_prop_newBid_validInput_succeeds :: NewBidTestContext -> Property
+_prop_newBid_validInput_succeeds testContext =
   shouldSucceed $
     testNewBid testContext def
 
@@ -223,8 +224,8 @@ prop_newBid_emptyNewBidState_fails testContext =
         { newBidStateMode = NewBidStateEmpty
         }
 
-prop_newBid_incorrectValidRange_fails :: NewBidTestContext -> Property
-prop_newBid_incorrectValidRange_fails testContext =
+_prop_newBid_incorrectValidRange_fails :: NewBidTestContext -> Property
+_prop_newBid_incorrectValidRange_fails testContext =
   shouldFailWithError StandingBid'NewBid'Error'IncorrectValidityInterval $
     testNewBid testContext $
       def

@@ -15,8 +15,11 @@ import Crypto.PubKey.Ed25519 (PublicKey, SecretKey, generateSecretKey, sign, toP
 import Crypto.Random (drgNewTest, withDRG)
 import Data.ByteArray (ByteArrayAccess, convert)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as ByteString (pack)
 import Data.Functor ((<&>))
+import HydraAuctionOnchain.Types.BidTerms (bidderSigMessageLength)
 import Plutarch.Test.QuickCheck.Instances ()
+import PlutusLedgerApi.V1.Address (pubKeyHashAddress)
 import PlutusLedgerApi.V1.Interval qualified as Interval (always)
 import PlutusLedgerApi.V1.Value qualified as Value (singleton)
 import PlutusLedgerApi.V2
@@ -34,6 +37,7 @@ import PlutusLedgerApi.V2
   , toBuiltin
   )
 import PlutusTx.AssocMap qualified as AMap (empty)
+import PlutusTx.Builtins (lengthOfByteString)
 import Spec.HydraAuctionOnchain.Helpers (hashVerificationKey, serialise)
 import Spec.HydraAuctionOnchain.QuickCheck.Modifiers (GenNonAdaValue (GenNonAdaValue))
 import Spec.HydraAuctionOnchain.Types.AuctionTerms (AuctionTerms (..))
@@ -99,11 +103,12 @@ genValidBidTerms
   -> Maybe Integer
   -> Gen BidTerms
 genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys mOldBidPrice = do
-  let (bi'BidderVk, bi'BidderPkh) = hashVerificationKey $ vkey bidderKeys
+  let (bi'BidderVk, bidderPkh) = hashVerificationKey $ vkey bidderKeys
+  let bi'BidderAddress = pubKeyHashAddress bidderPkh
   let bt'Bidder = BidderInfo {..}
   bt'BidPrice <- genBidPrice
   let bt'SellerSignature = sellerSignature bi'BidderVk
-  let bt'BidderSignature = bidderSignature bt'BidPrice bi'BidderPkh
+  let bt'BidderSignature = bidderSignature bt'BidPrice bidderPkh
   pure BidTerms {..}
   where
     genBidPrice :: Gen Integer
@@ -122,7 +127,19 @@ genValidBidTerms auctionCs auctionTerms sellerKeys bidderKeys mOldBidPrice = do
     bidderSignature :: Integer -> PubKeyHash -> BuiltinByteString
     bidderSignature bidPrice bidderPkh =
       signUsingKeyPair bidderKeys $
-        (serialise auctionCs <> serialise bidderPkh <> serialise bidPrice)
+        padMessage
+          bidderSigMessageLength
+          (serialise auctionCs <> serialise bidderPkh <> serialise bidPrice)
+
+padMessage :: Integer -> BuiltinByteString -> BuiltinByteString
+padMessage targetSize message
+  | padSize <= 0 = message
+  | otherwise =
+      toBuiltin (ByteString.pack $ replicate padSize 0) <> message
+  where
+    padSize :: Int
+    padSize =
+      fromInteger $ targetSize - lengthOfByteString message
 
 genValidBidState
   :: CurrencySymbol
@@ -155,7 +172,8 @@ genValidNewBidState oldBidState auctionCs auctionTerms sellerKeys bidderKeys =
 genValidAuctionTerms :: PublicKey -> Gen AuctionTerms
 genValidAuctionTerms vkey = do
   GenNonAdaValue @Positive at'AuctionLot <- arbitrary
-  let (at'SellerVk, at'SellerPkh) = hashVerificationKey vkey
+  let (at'SellerVk, sellerPkh) = hashVerificationKey vkey
+  let at'SellerAddress = pubKeyHashAddress sellerPkh
   at'Delegates <- vector @PubKeyHash =<< chooseInt (1, 10)
 
   let chooseInterval = POSIXTime <$> chooseInteger (1, 604_800_000) -- up to 1 week in msec
