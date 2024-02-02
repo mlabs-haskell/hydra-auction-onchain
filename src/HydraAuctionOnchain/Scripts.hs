@@ -3,6 +3,8 @@ module HydraAuctionOnchain.Scripts
   , auctionEscrowValidatorUntyped
   , auctionMetadataValidatorScript
   , auctionMetadataValidatorUntyped
+  , auctionMintingPolicyScript
+  , auctionMintingPolicyUntyped
   , compileScript
   , standingBidValidatorScript
   , standingBidValidatorUntyped
@@ -11,14 +13,37 @@ module HydraAuctionOnchain.Scripts
 
 import Data.Text (Text)
 import Data.Text qualified as T (unpack)
+import HydraAuctionOnchain.MintingPolicies.Auction (auctionMintingPolicy)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
 import HydraAuctionOnchain.Validators.AuctionEscrow (auctionEscrowValidator)
 import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Config (Config), Script, TracingMode (DoTracingAndBinds), compile)
-import Plutarch.Api.V2 (PCurrencySymbol, PScriptHash, PValidator)
+import Plutarch.Api.V2 (PCurrencySymbol, PMintingPolicy, PScriptHash, PTxOutRef, PValidator)
 import Plutarch.Unsafe (punsafeCoerce)
 import Ply.Plutarch.TypedWriter (TypedWriter, writeTypedScript)
+
+--------------------------------------------------------------------------------
+-- Auction MP
+--------------------------------------------------------------------------------
+
+auctionMintingPolicyUntyped
+  :: ClosedTerm
+      ( PAsData PScriptHash
+          :--> PAsData PTxOutRef
+          :--> PMintingPolicy
+      )
+auctionMintingPolicyUntyped = phoistAcyclic $
+  plam $ \auctionMetadataSh nonceOref redeemer ctx ->
+    popaque $
+      auctionMintingPolicy
+        # pfromData auctionMetadataSh
+        # pfromData nonceOref
+        # punsafeCoerce redeemer
+        # ctx
+
+auctionMintingPolicyScript :: Script
+auctionMintingPolicyScript = compileScript auctionMintingPolicyUntyped
 
 --------------------------------------------------------------------------------
 -- AuctionEscrow

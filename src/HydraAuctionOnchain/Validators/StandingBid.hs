@@ -5,7 +5,7 @@ module HydraAuctionOnchain.Validators.StandingBid
   , standingBidValidator
   ) where
 
-import HydraAuctionOnchain.Errors.StandingBid (PStandingBidError (..))
+import HydraAuctionOnchain.Errors.Validators.StandingBid (PStandingBidError (..))
 import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUniqueInputWithToken
