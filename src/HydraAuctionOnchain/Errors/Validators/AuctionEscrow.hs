@@ -1,4 +1,4 @@
-module HydraAuctionOnchain.Errors.AuctionEscrow
+module HydraAuctionOnchain.Errors.Validators.AuctionEscrow
   ( PAuctionEscrowError (..)
   ) where
 

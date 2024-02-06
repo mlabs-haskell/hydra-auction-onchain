@@ -25,3 +25,5 @@ newtype PAuctionInfo (s :: S)
 
 instance DerivePlutusType PAuctionInfo where
   type DPTStrat _ = PlutusTypeData
+
+instance PTryFrom PData PAuctionInfo

@@ -3,6 +3,7 @@ module Main (main) where
 import HydraAuctionOnchain.Scripts
   ( auctionEscrowValidatorUntyped
   , auctionMetadataValidatorUntyped
+  , auctionMintingPolicyUntyped
   , standingBidValidatorUntyped
   , writeScript
   )
@@ -23,15 +24,25 @@ main :: IO ()
 main =
   execParser (info (helper <*> scriptToCompile) fullDesc) >>= \case
     AllScripts -> do
+      writeAuctionMintingPolicy
       writeAuctionEscrowValidator
       writeStandingBidValidator
       writeAuctionMetadataValidator
+    AuctionMintingPolicy ->
+      writeAuctionMintingPolicy
     AuctionEscrowValidator ->
       writeAuctionEscrowValidator
     StandingBidValidator ->
       writeStandingBidValidator
     AuctionMetadataValidator ->
       writeAuctionMetadataValidator
+
+writeAuctionMintingPolicy :: IO ()
+writeAuctionMintingPolicy =
+  writeScript
+    "Auction minting policy"
+    "compiled/auction_minting_policy.plutus"
+    auctionMintingPolicyUntyped
 
 writeAuctionEscrowValidator :: IO ()
 writeAuctionEscrowValidator =
@@ -56,6 +67,7 @@ writeAuctionMetadataValidator =
 
 data ScriptToCompile
   = AllScripts
+  | AuctionMintingPolicy
   | AuctionEscrowValidator
   | StandingBidValidator
   | AuctionMetadataValidator
@@ -64,6 +76,7 @@ data ScriptToCompile
 toScript :: String -> Maybe ScriptToCompile
 toScript = \case
   "all" -> Just AllScripts
+  "auction_mp" -> Just AuctionMintingPolicy
   "auction_escrow" -> Just AuctionEscrowValidator
   "standing_bid" -> Just StandingBidValidator
   "metadata" -> Just AuctionMetadataValidator

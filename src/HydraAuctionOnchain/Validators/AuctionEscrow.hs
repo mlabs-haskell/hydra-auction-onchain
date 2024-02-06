@@ -11,7 +11,7 @@ module HydraAuctionOnchain.Validators.AuctionEscrow
   , pisConcluding
   ) where
 
-import HydraAuctionOnchain.Errors.AuctionEscrow (PAuctionEscrowError (..))
+import HydraAuctionOnchain.Errors.Validators.AuctionEscrow (PAuctionEscrowError (..))
 import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUniqueInputWithScriptHash
@@ -41,7 +41,7 @@ import HydraAuctionOnchain.Types.BidTerms (psellerPayout, pvalidateBidTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe, passertMaybeData)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState (PStandingBidState))
 import HydraAuctionOnchain.Types.Tokens
-  ( pallAuctionTokensBurned
+  ( pauctionTokenBundleBurned
   , ptxOutContainsAuctionEscrowToken
   , ptxOutContainsStandingBidToken
   )
@@ -518,7 +518,7 @@ pcheckCleanupAuction = phoistAcyclic $
     -- tokens of the auction should all be burned. No other tokens
     -- should be minted or burned.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionTokensNotBurnedExactly) $
-      pnormalize # txInfoFields.mint #== pallAuctionTokensBurned # auctionCs
+      pnormalize # txInfoFields.mint #== pauctionTokenBundleBurned # auctionCs
 
     -- This redeemer can only be used during the cleanup period.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'IncorrectValidityInterval) $

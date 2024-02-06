@@ -5,7 +5,7 @@ module Spec.HydraAuctionOnchain.Validators.StandingBid (spec) where
 import Data.Bool (bool)
 import Data.Default (Default (def))
 import Data.List (singleton)
-import HydraAuctionOnchain.Errors.StandingBid (PStandingBidError (..))
+import HydraAuctionOnchain.Errors.Validators.StandingBid (PStandingBidError (..))
 import HydraAuctionOnchain.Scripts (compileScript)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Script)
