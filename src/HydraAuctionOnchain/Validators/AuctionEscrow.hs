@@ -11,7 +11,7 @@ module HydraAuctionOnchain.Validators.AuctionEscrow
   , pisConcluding
   ) where
 
-import HydraAuctionOnchain.Errors.AuctionEscrow (PAuctionEscrowError (..))
+import HydraAuctionOnchain.Errors.Validators.AuctionEscrow (PAuctionEscrowError (..))
 import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUniqueInputWithScriptHash
@@ -20,9 +20,10 @@ import HydraAuctionOnchain.Helpers
   , pgetOwnInput
   , ponlyOneInputFromAddress
   , putxoAddress
-  , pvaluePaidTo
+  , pvaluePaidToAddr
   , pvaluePaidToScript
   )
+import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHash)
 import HydraAuctionOnchain.Types.AuctionEscrowState
   ( PAuctionEscrowState (AuctionConcluded)
   , pvalidateAuctionEscrowTransitionToAuctionConcluded
@@ -40,7 +41,7 @@ import HydraAuctionOnchain.Types.BidTerms (psellerPayout, pvalidateBidTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe, passertMaybeData)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState (PStandingBidState))
 import HydraAuctionOnchain.Types.Tokens
-  ( pallAuctionTokensBurned
+  ( pauctionTokenBundleBurned
   , ptxOutContainsAuctionEscrowToken
   , ptxOutContainsStandingBidToken
   )
@@ -48,6 +49,7 @@ import Plutarch.Api.V1.Value (plovelaceValueOf, pnormalize)
 import Plutarch.Api.V2
   ( PAddress
   , PCurrencySymbol
+  , PPubKeyHash
   , PScriptContext
   , PScriptHash
   , PTxInInfo
@@ -101,20 +103,28 @@ auctionEscrowValidator
 auctionEscrowValidator = phoistAcyclic $
   plam $ \standingBidSh feeEscrowSh auctionCs auctionTerms oldAuctionState redeemer ctx -> P.do
     txInfo <- plet $ pfield @"txInfo" # ctx
+    sellerAddress <- plet $ pfield @"sellerAddress" # auctionTerms
 
-    -- (AUES0) The validator's own input should exist.
+    -- The seller address should contain payment key hash:
+    sellerPkh <-
+      plet $
+        passertMaybe
+          $(errCode AuctionEscrow'Error'InvalidSellerAddress)
+          (paddrPaymentKeyHash # sellerAddress)
+
+    -- The validator's own input should exist.
     ownInput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'Error'MissingAuctionEscrowInput)
           (pgetOwnInput # ctx)
 
-    -- (AUES1) There should only be one auction escrow input.
+    -- There should only be one auction escrow input.
     ownAddress <- plet $ putxoAddress # ownInput
     passert $(errCode AuctionEscrow'Error'TooManyOwnScriptInputs) $
       ponlyOneInputFromAddress # ownAddress # txInfo
 
-    -- (AUES2) The auction escrow input should contain an auction
+    -- The auction escrow input should contain an auction
     -- escrow token.
     passert $(errCode AuctionEscrow'Error'OwnInputMissingToken) $
       ptxOutContainsAuctionEscrowToken # auctionCs #$ pfield @"resolved" # ownInput
@@ -129,6 +139,7 @@ auctionEscrowValidator = phoistAcyclic $
           # auctionTerms
           # oldAuctionState
           # ownAddress
+          # sellerPkh
       BidderBuysRedeemer _ ->
         pcheckBidderBuys
           # standingBidSh
@@ -146,6 +157,7 @@ auctionEscrowValidator = phoistAcyclic $
           # auctionTerms
           # oldAuctionState
           # ownAddress
+          # sellerPkh
       CleanupAuctionRedeemer _ ->
         pcheckCleanupAuction
           # txInfo
@@ -153,6 +165,7 @@ auctionEscrowValidator = phoistAcyclic $
           # auctionTerms
           # oldAuctionState
           # ownInput
+          # sellerPkh
 
 --------------------------------------------------------------------------------
 -- StartBidding
@@ -167,44 +180,45 @@ pcheckStartBidding
           :--> PAuctionTerms
           :--> PAuctionEscrowState
           :--> PAddress
+          :--> PPubKeyHash
           :--> PUnit
       )
 pcheckStartBidding = phoistAcyclic $
-  plam $ \standingBidSh txInfo auctionCs auctionTerms oldAuctionState ownAddress -> P.do
+  plam $ \standingBidSh txInfo auctionCs auctionTerms oldAuctionState ownAddress sellerPkh -> P.do
     txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
 
-    -- (AUES3) There should be no tokens minted or burned.
+    -- There should be no tokens minted or burned.
     passert $(errCode AuctionEscrow'StartBidding'Error'UnexpectedTokensMintedBurned) $
       pfromData txInfoFields.mint #== mempty
 
-    -- (AUES4) This redeemer can only be used during
+    -- This redeemer can only be used during
     -- the bidding period.
     passert $(errCode AuctionEscrow'StartBidding'Error'IncorrectValidityInterval) $
       pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
 
-    -- (AUES5) The transaction should be signed by the seller.
+    -- The transaction should be signed by the seller.
     passert $(errCode AuctionEscrow'StartBidding'Error'MissingSellerSignature) $
       ptxSignedBy
         # txInfoFields.signatories
-        # (pfield @"sellerPkh" # auctionTerms)
+        # pdata sellerPkh
 
     ----------------------------------------------------------------------------
     -- Check auction escrow state transition
     ----------------------------------------------------------------------------
 
-    -- (AUES6) There should be exactly one auction escrow output.
+    -- There should be exactly one auction escrow output.
     ownOutput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'StartBidding'Error'MissingAuctionEscrowOutput)
           (pfindUniqueOutputWithAddress # ownAddress # txInfo)
 
-    -- (AUES7) The auction escrow output should contain an auction
+    -- The auction escrow output should contain an auction
     -- escrow token.
     passert $(errCode AuctionEscrow'StartBidding'Error'AuctionEscrowOutputMissingToken) $
       ptxOutContainsAuctionEscrowToken # auctionCs # ownOutput
 
-    -- (AUES8) The auction escrow output's datum should be decodable
+    -- The auction escrow output's datum should be decodable
     -- as an auction escrow state.
     newAuctionState <-
       plet $
@@ -212,7 +226,7 @@ pcheckStartBidding = phoistAcyclic $
           $(errCode AuctionEscrow'StartBidding'Error'FailedToDecodeAuctionEscrowState)
           (pdecodeInlineDatum # ownOutput)
 
-    -- (AUES9) The auction state should transition from
+    -- The auction state should transition from
     -- `AuctionAnnounced` to `BiddingStarted`.
     passert $(errCode AuctionEscrow'StartBidding'Error'InvalidAuctionStateTransition) $
       pvalidateAuctionEscrowTransitionToBiddingStarted
@@ -223,14 +237,14 @@ pcheckStartBidding = phoistAcyclic $
     -- Check standing bid state
     ----------------------------------------------------------------------------
 
-    -- (AUES10) There should be exactly one standing bid output.
+    -- There should be exactly one standing bid output.
     standingBidOutput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'StartBidding'Error'MissingStandingBidOutput)
           (pfindUniqueOutputWithScriptHash # standingBidSh # txInfo)
 
-    -- (AUES11) The standing bid output's datum should be decodable
+    -- The standing bid output's datum should be decodable
     -- as a standing bid state.
     initialBidState <-
       plet $
@@ -238,7 +252,7 @@ pcheckStartBidding = phoistAcyclic $
           $(errCode AuctionEscrow'StartBidding'Error'FailedToDecodeStandingBidState)
           (pdecodeInlineDatum # standingBidOutput)
 
-    -- (AUES12) The standing bid state should be initialized
+    -- The standing bid state should be initialized
     -- without bid terms.
     passert $(errCode AuctionEscrow'StartBidding'Error'InvalidStandingBidState) $
       initialBidState #== pcon (PStandingBidState pdnothing)
@@ -264,13 +278,13 @@ pcheckBidderBuys
 pcheckBidderBuys = phoistAcyclic $
   plam $ \standingBidSh feeEscrowSh txInfo auctionCs auctionTerms oldAuctionState ownAddress -> P.do
     txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
-    auctionTermsFields <- pletFields @["auctionLot", "sellerPkh"] auctionTerms
+    auctionTermsFields <- pletFields @["auctionLot", "sellerAddress"] auctionTerms
 
-    -- (AUES13) There should be no tokens minted or burned.
+    -- There should be no tokens minted or burned.
     passert $(errCode AuctionEscrow'BidderBuys'Error'UnexpectedTokensMintedBurned) $
       pfromData txInfoFields.mint #== mempty
 
-    -- (AUES14) This redeemer can only be used during
+    -- This redeemer can only be used during
     -- the purchase period.
     passert $(errCode AuctionEscrow'BidderBuys'Error'IncorrectValidityInterval) $
       pcontains # (ppurchasePeriod # auctionTerms) # txInfoFields.validRange
@@ -279,26 +293,26 @@ pcheckBidderBuys = phoistAcyclic $
     -- Check auction escrow state transition
     ----------------------------------------------------------------------------
 
-    -- (AUES15) There should be exactly one auction escrow output.
+    -- There should be exactly one auction escrow output.
     ownOutput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'BidderBuys'Error'MissingAuctionEscrowOutput)
           (pfindUniqueOutputWithAddress # ownAddress # txInfo)
 
-    -- (AUES16) The auction escrow output should contain
+    -- The auction escrow output should contain
     -- the auction escrow token.
     passert
       $(errCode AuctionEscrow'BidderBuys'Error'AuctionEscrowOutputMissingAuctionEscrowToken)
       (ptxOutContainsAuctionEscrowToken # auctionCs # ownOutput)
 
-    -- (AUES17) The auction escrow output should contain
+    -- The auction escrow output should contain
     -- the standing bid token.
     passert
       $(errCode AuctionEscrow'BidderBuys'Error'AuctionEscrowOutputMissingStandingBidToken)
       (ptxOutContainsStandingBidToken # auctionCs # ownOutput)
 
-    -- (AUES18) The auction escrow output's datum should be decodable
+    -- The auction escrow output's datum should be decodable
     -- as an auction escrow state.
     newAuctionState <-
       plet $
@@ -306,7 +320,7 @@ pcheckBidderBuys = phoistAcyclic $
           $(errCode AuctionEscrow'BidderBuys'Error'FailedToDecodeAuctionEscrowState)
           (pdecodeInlineDatum # ownOutput)
 
-    -- (AUES19) The auction state should transition from
+    -- The auction state should transition from
     -- `BiddingStarted` to `AuctionConcluded`.
     passert $(errCode AuctionEscrow'BidderBuys'Error'InvalidAuctionStateTransition) $
       pvalidateAuctionEscrowTransitionToAuctionConcluded
@@ -317,20 +331,20 @@ pcheckBidderBuys = phoistAcyclic $
     -- Check auction lot transfer to the winning bidder
     ----------------------------------------------------------------------------
 
-    -- (AUES20) There should be exactly one standing bid input.
+    -- There should be exactly one standing bid input.
     standingBidInput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'BidderBuys'Error'MissingStandingBidInput)
           (pfindUniqueInputWithScriptHash # standingBidSh # txInfo)
 
-    -- (AUES21) The standing bid input should contain the standing
+    -- The standing bid input should contain the standing
     -- bid token.
     standingBidInputResolved <- plet $ pfield @"resolved" # standingBidInput
     passert $(errCode AuctionEscrow'BidderBuys'Error'StandingBidInputMissingToken) $
       (ptxOutContainsStandingBidToken # auctionCs # standingBidInputResolved)
 
-    -- (AUES22) The standing bid output's datum should be decodable
+    -- The standing bid output's datum should be decodable
     -- as a standing bid state.
     bidState <-
       plet $
@@ -338,24 +352,31 @@ pcheckBidderBuys = phoistAcyclic $
           $(errCode AuctionEscrow'BidderBuys'Error'FailedToDecodeStandingBidState)
           (pdecodeInlineDatum @PStandingBidState # standingBidInputResolved)
 
-    -- (AUES23) The standing bid should contain bid terms.
+    -- The standing bid should contain bid terms.
     bidTerms <-
       plet $
         passertMaybeData
           $(errCode AuctionEscrow'BidderBuys'Error'EmptyStandingBid)
           (pto bidState)
 
-    -- (AUES24) The bid terms in the standing bid input are valid.
+    -- The bidder address should contain payment key hash.
+    bidderAddress <- plet $ pfield @"biBidderAddress" #$ pfield @"btBidder" # bidTerms
+    bidderPkh <-
+      plet $
+        passertMaybe
+          $(errCode AuctionEscrow'BidderBuys'Error'InvalidBidderAddress)
+          (paddrPaymentKeyHash # bidderAddress)
+
+    -- The bid terms in the standing bid input are valid.
     passert $(errCode AuctionEscrow'BidderBuys'Error'BidTermsInvalid) $
       pvalidateBidTerms # auctionCs # auctionTerms # bidTerms
 
-    -- (AUES25) The auction lot is paid to the winning bidder,
+    -- The auction lot is paid to the winning bidder,
     -- who is buying it.
-    bidderPkh <- plet $ pfield @"biBidderPkh" #$ pfield @"btBidder" # bidTerms
     passert $(errCode AuctionEscrow'BidderBuys'Error'AuctionLotNotPaidToBidder) $
-      auctionTermsFields.auctionLot #<= pvaluePaidTo # txInfo # bidderPkh
+      auctionTermsFields.auctionLot #<= pvaluePaidToAddr # txInfo # bidderAddress
 
-    -- (AUES26) The bidder signed the transaction.
+    -- The bidder signed the transaction.
     passert $(errCode AuctionEscrow'BidderBuys'Error'NoBidderConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
@@ -363,16 +384,16 @@ pcheckBidderBuys = phoistAcyclic $
     -- Check ADA payment to the seller
     ----------------------------------------------------------------------------
 
-    -- (AUES27) The seller receives the proceeds of the auction.
+    -- The seller receives the proceeds of the auction.
     passert $(errCode AuctionEscrow'BidderBuys'Error'SellerPaymentIncorrect) $
       (psellerPayout # auctionTerms # bidTerms)
-        #<= (plovelaceValueOf #$ pvaluePaidTo # txInfo # auctionTermsFields.sellerPkh)
+        #<= (plovelaceValueOf #$ pvaluePaidToAddr # txInfo # auctionTermsFields.sellerAddress)
 
     ----------------------------------------------------------------------------
     -- Check auction fees
     ----------------------------------------------------------------------------
 
-    -- (AUES28) The total auction fees are sent to
+    -- The total auction fees are sent to
     -- the fee escrow validator.
     passert $(errCode AuctionEscrow'BidderBuys'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
@@ -393,19 +414,20 @@ pcheckSellerReclaims
           :--> PAuctionTerms
           :--> PAuctionEscrowState
           :--> PAddress
+          :--> PPubKeyHash
           :--> PUnit
       )
 pcheckSellerReclaims = phoistAcyclic $
-  plam $ \feeEscrowSh txInfo auctionCs auctionTerms oldAuctionState ownAddress -> P.do
+  plam $ \feeEscrowSh txInfo auctionCs auctionTerms oldAuctionState ownAddress sellerPkh -> P.do
     txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
-    auctionTermsFields <- pletFields @["auctionLot", "sellerPkh"] auctionTerms
-    let sellerPkh = auctionTermsFields.sellerPkh
+    auctionTermsFields <- pletFields @["auctionLot", "sellerAddress"] auctionTerms
+    let sellerAddress = auctionTermsFields.sellerAddress
 
-    -- (AUES29) There should be no tokens minted or burned.
+    -- There should be no tokens minted or burned.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'UnexpectedTokensMintedBurned) $
       pfromData txInfoFields.mint #== mempty
 
-    -- (AUES30) This redeemer can only be used during
+    -- This redeemer can only be used during
     -- the penalty period.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'IncorrectValidityInterval) $
       pcontains # (ppenaltyPeriod # auctionTerms) # txInfoFields.validRange
@@ -414,26 +436,26 @@ pcheckSellerReclaims = phoistAcyclic $
     -- Check auction escrow state transition
     ----------------------------------------------------------------------------
 
-    -- (AUES31) There should be exactly one auction escrow output.
+    -- There should be exactly one auction escrow output.
     ownOutput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'SellerReclaims'Error'MissingAuctionEscrowOutput)
           (pfindUniqueOutputWithAddress # ownAddress # txInfo)
 
-    -- (AUES32) The auction escrow output should contain
+    -- The auction escrow output should contain
     -- the auction escrow token.
     passert
       $(errCode AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingAuctionEscrowToken)
       (ptxOutContainsAuctionEscrowToken # auctionCs # ownOutput)
 
-    -- (AUES33) The auction escrow output should contain
+    -- The auction escrow output should contain
     -- the standing bid token.
     passert
       $(errCode AuctionEscrow'SellerReclaims'Error'AuctionEscrowOutputMissingStandingBidToken)
       (ptxOutContainsStandingBidToken # auctionCs # ownOutput)
 
-    -- (AUES34) The auction escrow output's datum should be decodable
+    -- The auction escrow output's datum should be decodable
     -- as an auction escrow state.
     newAuctionState <-
       plet $
@@ -441,7 +463,7 @@ pcheckSellerReclaims = phoistAcyclic $
           $(errCode AuctionEscrow'SellerReclaims'Error'FailedToDecodeAuctionEscrowState)
           (pdecodeInlineDatum # ownOutput)
 
-    -- (AUES35) The auction state should transition from
+    -- The auction state should transition from
     -- `BiddingStarted` to `AuctionConcluded`.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'InvalidAuctionStateTransition) $
       pvalidateAuctionEscrowTransitionToAuctionConcluded
@@ -452,12 +474,12 @@ pcheckSellerReclaims = phoistAcyclic $
     -- Check auction lot transfer back to the seller
     ----------------------------------------------------------------------------
 
-    -- (AUES36) The auction lot is returned to the seller.
+    -- The auction lot is returned to the seller.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToSellerIncorrect) $
       auctionTermsFields.auctionLot
-        #<= (pvaluePaidTo # txInfo # sellerPkh)
+        #<= (pvaluePaidToAddr # txInfo # sellerAddress)
 
-    -- (AUES37) The seller signed the transaction.
+    -- The seller signed the transaction.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'NoSellerConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata sellerPkh
 
@@ -465,7 +487,7 @@ pcheckSellerReclaims = phoistAcyclic $
     -- Check auction fees
     ----------------------------------------------------------------------------
 
-    -- (AUES38) The total auction fees are sent to
+    -- The total auction fees are sent to
     -- the fee escrow validator.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
@@ -485,32 +507,32 @@ pcheckCleanupAuction
           :--> PAuctionTerms
           :--> PAuctionEscrowState
           :--> PTxInInfo
+          :--> PPubKeyHash
           :--> PUnit
       )
 pcheckCleanupAuction = phoistAcyclic $
-  plam $ \txInfo auctionCs auctionTerms auctionState ownInput -> P.do
+  plam $ \txInfo auctionCs auctionTerms auctionState ownInput sellerPkh -> P.do
     txInfoFields <- pletFields @["mint", "signatories", "validRange"] txInfo
 
-    -- (AUES39) The auction state, auction metadata,and standing bid
+    -- The auction state, auction metadata,and standing bid
     -- tokens of the auction should all be burned. No other tokens
     -- should be minted or burned.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionTokensNotBurnedExactly) $
-      pnormalize # txInfoFields.mint #== pallAuctionTokensBurned # auctionCs
+      pnormalize # txInfoFields.mint #== pauctionTokenBundleBurned # auctionCs
 
-    -- (AUES40) This redeemer can only be used during the cleanup period.
+    -- This redeemer can only be used during the cleanup period.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'IncorrectValidityInterval) $
       pcontains # (pcleanupPeriod # auctionTerms) # txInfoFields.validRange
 
-    -- (AUES41) The seller signed the transaction.
-    sellerPkh <- plet $ pfield @"sellerPkh" # auctionTerms
+    -- The seller signed the transaction.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'NoSellerConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata sellerPkh
 
-    -- (AUES42) The auction is concluded.
+    -- The auction is concluded.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionIsNotConcluded) $
       auctionState #== pcon (AuctionConcluded pdnil)
 
-    -- (AUES43) The auction escrow input contains the standing bid
+    -- The auction escrow input contains the standing bid
     -- token in addition to the auction token.
     passert $(errCode AuctionEscrow'CleanupAuction'Error'AuctionEscrowInputMissingStandingBidToken) $
       ptxOutContainsStandingBidToken # auctionCs #$ pfield @"resolved" # ownInput

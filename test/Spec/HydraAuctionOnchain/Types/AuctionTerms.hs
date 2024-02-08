@@ -11,13 +11,20 @@ module Spec.HydraAuctionOnchain.Types.AuctionTerms
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
 import Plutarch.DataRepr (DerivePConstantViaData (DerivePConstantViaData))
 import Plutarch.Lift (PConstantDecl, PUnsafeLiftDecl (PLifted))
-import PlutusLedgerApi.V2 (BuiltinByteString, POSIXTime, POSIXTimeRange, PubKeyHash, Value)
+import PlutusLedgerApi.V2
+  ( Address
+  , BuiltinByteString
+  , POSIXTime
+  , POSIXTimeRange
+  , PubKeyHash
+  , Value
+  )
 import PlutusTx (makeIsDataIndexed)
 import Spec.HydraAuctionOnchain.Helpers (intervalFiniteClosedOpen)
 
 data AuctionTerms = AuctionTerms
   { at'AuctionLot :: Value
-  , at'SellerPkh :: PubKeyHash
+  , at'SellerAddress :: Address
   , at'SellerVk :: BuiltinByteString
   , at'Delegates :: [PubKeyHash]
   , at'BiddingStart :: POSIXTime

@@ -1,16 +1,21 @@
+{-# LANGUAGE PackageImports #-}
+
 module HydraAuctionOnchain.Types.BidTerms
   ( PBidTerms (PBidTerms)
+  , bidderSigMessageLength
   , psellerPayout
   , pvalidateBidTerms
   ) where
 
 import HydraAuctionOnchain.Helpers (pserialise)
+import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHashUnsafe)
+import HydraAuctionOnchain.Lib.Cose (pverifyCoseSignature)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, ptotalAuctionFees)
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import Plutarch.Api.V2 (PCurrencySymbol, PPubKeyHash)
-import Plutarch.Crypto (pverifyEd25519Signature)
 import Plutarch.DataRepr (PDataFields)
 import Plutarch.Monadic qualified as P
+import "liqwid-plutarch-extra" Plutarch.Extra.List (preplicate)
 
 data PBidTerms (s :: S)
   = PBidTerms
@@ -46,15 +51,16 @@ psellerPayout = phoistAcyclic $
 pvalidateBidTerms :: Term s (PCurrencySymbol :--> PAuctionTerms :--> PBidTerms :--> PBool)
 pvalidateBidTerms = phoistAcyclic $
   plam $ \auctionCs auctionTerms bidTerms -> P.do
+    sellerAddr <- plet $ pfield @"sellerAddress" # auctionTerms
     bidTermsFields <-
       pletFields
         @["btBidder", "btPrice", "btBidderSignature", "btSellerSignature"]
         bidTerms
-    bidderInfo <- pletFields @["biBidderPkh", "biBidderVk"] bidTermsFields.btBidder
+    bidderInfo <- pletFields @["biBidderAddress", "biBidderVk"] bidTermsFields.btBidder
 
     let sellerSignature = bidTermsFields.btSellerSignature
     sellerVk <- plet $ pfield @"sellerVk" # auctionTerms
-    sellerSignatureMsg <-
+    sellerSigMessage <-
       plet $
         sellerSignatureMessage
           # auctionCs
@@ -63,17 +69,49 @@ pvalidateBidTerms = phoistAcyclic $
     let
       bidderSignature = bidTermsFields.btBidderSignature
       bidderVk = bidderInfo.biBidderVk
-    bidderSignatureMsg <-
+      bidderAddr = bidderInfo.biBidderAddress
+    bidderSigMessage <-
       plet $
         bidderSignatureMessage
           # auctionCs
           # bidTermsFields.btPrice
-          # bidderInfo.biBidderPkh
+          # (paddrPaymentKeyHashUnsafe # bidderAddr)
 
     -- The seller authorized the bidder to participate in the auction.
-    (pverifyEd25519Signature # sellerVk # sellerSignatureMsg # sellerSignature)
+    ( pverifyCoseSignature
+        # sellerSignature
+        # sellerVk
+        # sellerAddr
+        # sellerSigMessage
+        # sellerSigMessageLengthHex
+      )
       -- The bidder authorized the bid to be submitted in the auction.
-      #&& (pverifyEd25519Signature # bidderVk # bidderSignatureMsg # bidderSignature)
+      #&& ( pverifyCoseSignature
+              # bidderSignature
+              # bidderVk
+              # bidderAddr
+              # bidderSigMessage
+              # bidderSigMessageLengthHex
+          )
+
+-- Maximum (reasonable) size of the bidder signature message where
+-- bidPrice is set to the total supply of ADA (45 billion).
+--
+-- Note, that the bid price is the only component of the message that
+-- has variable size; and for lower bid prices the message is padded
+-- with zero bytes at the beginning to reach this size.
+bidderSigMessageLength :: Integer
+bidderSigMessageLength = 69
+
+bidderSigMessageLengthHex :: Term s PByteString
+bidderSigMessageLengthHex =
+  -- 69 = 2 (cbor) + 28 (cs) + 2 (cbor) + 28 (pkh) + 9 (lovelace)
+  phoistAcyclic $ phexByteStr "45"
+
+sellerSigMessageLengthHex :: Term s PByteString
+sellerSigMessageLengthHex =
+  -- 64 = 2 (cbor) + 28 (cs) + 2 (cbor) + 32 (vk)
+  phoistAcyclic $ phexByteStr "40"
 
 bidderSignatureMessage
   :: Term
@@ -85,9 +123,19 @@ bidderSignatureMessage
       )
 bidderSignatureMessage = phoistAcyclic $
   plam $ \auctionCs bidPrice bidderPkh ->
-    (pserialise # auctionCs) <> (pserialise # bidderPkh) <> (pserialise # bidPrice)
+    padMessage # pconstant bidderSigMessageLength #$ (pserialise # auctionCs)
+      <> (pserialise # bidderPkh)
+      <> (pserialise # bidPrice)
 
 sellerSignatureMessage :: Term s (PCurrencySymbol :--> PByteString :--> PByteString)
 sellerSignatureMessage = phoistAcyclic $
   plam $ \auctionCs bidderVk ->
     (pserialise # auctionCs) <> (pserialise # bidderVk)
+
+padMessage :: Term s (PInteger :--> PByteString :--> PByteString)
+padMessage = phoistAcyclic $
+  plam $ \targetSize message -> P.do
+    padSize <- plet $ targetSize - (plengthBS # message)
+    let nul = phexByteStr "00"
+    let padding = pfoldl # plam (<>) # mempty #$ preplicate @PBuiltinList # padSize # nul
+    pif (padSize #<= 0) message (padding <> message)

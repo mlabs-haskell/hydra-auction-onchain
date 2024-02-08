@@ -1,4 +1,4 @@
-module HydraAuctionOnchain.Errors.StandingBid
+module HydraAuctionOnchain.Errors.Validators.StandingBid
   ( PStandingBidError (..)
   ) where
 

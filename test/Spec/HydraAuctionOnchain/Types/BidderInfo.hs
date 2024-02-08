@@ -9,11 +9,11 @@ module Spec.HydraAuctionOnchain.Types.BidderInfo
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import Plutarch.DataRepr (DerivePConstantViaData (DerivePConstantViaData))
 import Plutarch.Lift (PConstantDecl, PUnsafeLiftDecl (PLifted))
-import PlutusLedgerApi.V2 (BuiltinByteString, PubKeyHash)
+import PlutusLedgerApi.V2 (Address, BuiltinByteString)
 import PlutusTx (makeIsDataIndexed)
 
 data BidderInfo = BidderInfo
-  { bi'BidderPkh :: PubKeyHash
+  { bi'BidderAddress :: Address
   , bi'BidderVk :: BuiltinByteString
   }
   deriving stock (Show, Eq)
