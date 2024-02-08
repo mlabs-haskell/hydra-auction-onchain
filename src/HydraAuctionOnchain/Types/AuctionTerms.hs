@@ -103,14 +103,14 @@ pvalidateAuctionTerms = phoistAcyclic $
     passert $(errCode AuctionTerms'Error'NonPositiveMinBidIncrement) $
       0 #< pfromData rec.minBidIncrement
 
-    -- The auction fee for each delegate must contain
-    -- the min 2 ADA for the utxos that will be sent to the delegates
-    -- during fee distribution.
+    -- The auction fees for all delegates must be covered by
+    -- the starting bid.
     passert $(errCode AuctionTerms'Error'InvalidStartingBid) $
       ptotalAuctionFees # auctionTerms #< rec.startingBid
 
-    -- The auction fees for all delegates must be covered by
-    -- the starting bid.
+    -- The auction fee for each delegate must contain
+    -- the min 2.5 ADA for the utxos that will be sent to the delegates
+    -- during fee distribution.
     passert $(errCode AuctionTerms'Error'InvalidAuctionFeePerDelegate) $
       pminAuctionFee #< rec.auctionFeePerDelegate
 
