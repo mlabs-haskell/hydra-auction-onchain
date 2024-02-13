@@ -105,6 +105,7 @@ library
     HydraAuctionOnchain.Errors.MintingPolicies.Auction
     HydraAuctionOnchain.Errors.Types.AuctionTerms
     HydraAuctionOnchain.Errors.Validators.AuctionEscrow
+    HydraAuctionOnchain.Errors.Validators.BidderDeposit
     HydraAuctionOnchain.Errors.Validators.StandingBid
     HydraAuctionOnchain.Helpers
     HydraAuctionOnchain.Lib.Address
@@ -124,6 +125,7 @@ library
     HydraAuctionOnchain.Types.Tokens
     HydraAuctionOnchain.Validators.AuctionEscrow
     HydraAuctionOnchain.Validators.AuctionMetadata
+    HydraAuctionOnchain.Validators.BidderDeposit
     HydraAuctionOnchain.Validators.StandingBid
 
   build-depends:

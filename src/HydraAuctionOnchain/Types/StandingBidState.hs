@@ -1,10 +1,13 @@
 module HydraAuctionOnchain.Types.StandingBidState
   ( PStandingBidState (PStandingBidState)
+  , pbidderLost
+  , pbidderWon
   , pvalidateNewBid
   ) where
 
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
-import HydraAuctionOnchain.Types.BidTerms (PBidTerms, pvalidateBidTerms)
+import HydraAuctionOnchain.Types.BidTerms (PBidTerms, pbidderMadeBid, pvalidateBidTerms)
+import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import Plutarch.Api.V2 (PCurrencySymbol, PMaybeData)
 import Plutarch.Extra.Maybe (pmaybeData)
 import Plutarch.Monadic qualified as P
@@ -17,6 +20,25 @@ instance DerivePlutusType PStandingBidState where
   type DPTStrat _ = PlutusTypeNewtype
 
 instance PTryFrom PData PStandingBidState
+
+----------------------------------------------------------------------
+-- Bidder predicates
+
+pbidderLost :: Term s (PStandingBidState :--> PBidderInfo :--> PBool)
+pbidderLost = phoistAcyclic $
+  plam $ \bidState bidderInfo ->
+    pmaybeData
+      # pcon PTrue
+      # plam (\bidTerms -> pbidderMadeBid # bidTerms # bidderInfo)
+      # pto bidState
+
+pbidderWon :: Term s (PStandingBidState :--> PBidderInfo :--> PBool)
+pbidderWon = phoistAcyclic $
+  plam $ \bidState bidderInfo ->
+    pnot #$ pbidderLost # bidState # bidderInfo
+
+----------------------------------------------------------------------
+-- Standing bid state transition validation
 
 pvalidateNewBid
   :: Term
