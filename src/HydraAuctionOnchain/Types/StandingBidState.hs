@@ -27,15 +27,15 @@ instance PTryFrom PData PStandingBidState
 pbidderLost :: Term s (PStandingBidState :--> PBidderInfo :--> PBool)
 pbidderLost = phoistAcyclic $
   plam $ \bidState bidderInfo ->
-    pmaybeData
-      # pcon PTrue
-      # plam (\bidTerms -> pbidderMadeBid # bidTerms # bidderInfo)
-      # pto bidState
+    pnot #$ pbidderWon # bidState # bidderInfo
 
 pbidderWon :: Term s (PStandingBidState :--> PBidderInfo :--> PBool)
 pbidderWon = phoistAcyclic $
   plam $ \bidState bidderInfo ->
-    pnot #$ pbidderLost # bidState # bidderInfo
+    pmaybeData
+      # pcon PFalse
+      # plam (\bidTerms -> pbidderMadeBid # bidTerms # bidderInfo)
+      # pto bidState
 
 ----------------------------------------------------------------------
 -- Standing bid state transition validation

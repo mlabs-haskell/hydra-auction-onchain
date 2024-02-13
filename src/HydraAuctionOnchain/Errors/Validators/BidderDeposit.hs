@@ -18,6 +18,14 @@ data PBidderDepositError (s :: S)
   | BidderDeposit'UseDepositWinner'Error'MissingAuctionEscrowInput
   | BidderDeposit'UseDepositWinner'Error'AuctionEscrowInputMissingToken
   | BidderDeposit'UseDepositWinner'Error'InvalidAuctionEscrowRedeemer
+  | -- ReclaimDepositLoser errors
+    BidderDeposit'ReclaimDepositLoser'Error'MissingStandingBidInput
+  | BidderDeposit'ReclaimDepositLoser'Error'StandingBidInputMissingToken
+  | BidderDeposit'ReclaimDepositLoser'Error'FailedToDecodeStandingBidState
+  | BidderDeposit'ReclaimDepositLoser'Error'BidderNotLoser
+  | BidderDeposit'ReclaimDepositLoser'Error'IncorrectValidityInterval
+  | BidderDeposit'ReclaimDepositLoser'Error'InvalidBidderAddress
+  | BidderDeposit'ReclaimDepositLoser'Error'NoBidderConsent
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 

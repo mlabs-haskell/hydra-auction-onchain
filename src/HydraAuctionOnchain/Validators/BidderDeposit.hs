@@ -3,7 +3,7 @@
 module HydraAuctionOnchain.Validators.BidderDeposit
   ( PBidderDepositRedeemer
       ( UseDepositWinnerRedeemer
-      , DepositReclaimedByLoserRedeemer
+      , ReclaimDepositLoserRedeemer
       , DepositReclaimedAuctionConcludedRedeemer
       , DepositCleanupRedeemer
       )
@@ -14,14 +14,17 @@ import HydraAuctionOnchain.Errors.Validators.BidderDeposit (PBidderDepositError 
 import HydraAuctionOnchain.Helpers
   ( pdecodeInlineDatum
   , pfindUniqueInputWithScriptHash
+  , pfindUniqueRefInputWithScriptHash
   , pgetOwnInput
   , ponlyOneInputFromAddress
   , putxoAddress
   )
+import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHash)
 import HydraAuctionOnchain.Lib.ScriptContext (pinputSpentWithRedeemer)
+import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, ppostBiddingPeriod)
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
-import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pbidderWon)
+import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pbidderLost, pbidderWon)
 import HydraAuctionOnchain.Types.Tokens
   ( ptxOutContainsAuctionEscrowToken
   , ptxOutContainsStandingBidToken
@@ -30,6 +33,8 @@ import HydraAuctionOnchain.Validators.AuctionEscrow
   ( PAuctionEscrowRedeemer (BidderBuysRedeemer)
   )
 import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo)
+import Plutarch.Extra.Interval (pcontains)
+import Plutarch.Extra.ScriptContext (ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
 ----------------------------------------------------------------------
@@ -37,7 +42,7 @@ import Plutarch.Monadic qualified as P
 
 data PBidderDepositRedeemer (s :: S)
   = UseDepositWinnerRedeemer (Term s (PDataRecord '[]))
-  | DepositReclaimedByLoserRedeemer (Term s (PDataRecord '[]))
+  | ReclaimDepositLoserRedeemer (Term s (PDataRecord '[]))
   | DepositReclaimedAuctionConcludedRedeemer (Term s (PDataRecord '[]))
   | DepositCleanupRedeemer (Term s (PDataRecord '[]))
   deriving stock (Generic)
@@ -57,13 +62,14 @@ bidderDepositValidator
       ( PScriptHash
           :--> PScriptHash
           :--> PCurrencySymbol
+          :--> PAuctionTerms
           :--> PBidderInfo
           :--> PBidderDepositRedeemer
           :--> PScriptContext
           :--> PUnit
       )
 bidderDepositValidator = phoistAcyclic $
-  plam $ \standingBidSh auctionEscrowSh auctionCs bidderInfo redeemer ctx -> P.do
+  plam $ \standingBidSh auctionEscrowSh auctionCs auctionTerms bidderInfo redeemer ctx -> P.do
     txInfo <- plet $ pfield @"txInfo" # ctx
 
     -- The validator's own input should exist.
@@ -91,7 +97,20 @@ bidderDepositValidator = phoistAcyclic $
           # auctionEscrowSh
           # auctionCs
           # bidderInfo
+      ReclaimDepositLoserRedeemer _ ->
+        pcheckReclaimDepositLoser
+          # txInfo
+          # standingBidSh
+          # auctionCs
+          # auctionTerms
+          # bidderInfo
       _ -> undefined
+
+----------------------------------------------------------------------
+-- UseDepositWinner
+--
+-- Deposit is used by the bidder who won the auction to buy
+-- the auction lot.
 
 pcheckUseDepositWinner
   :: Term
@@ -150,5 +169,67 @@ pcheckUseDepositWinner = phoistAcyclic $
         # plam (\redeemer -> redeemer #== pcon (BidderBuysRedeemer pdnil))
         # txInfo
         # auctionEscrowInput
+
+    pcon PUnit
+
+----------------------------------------------------------------------
+-- ReclaimDepositLoser
+--
+-- The bidder deposit is reclaimed by a bidder that did not win
+-- the auction.
+
+pcheckReclaimDepositLoser
+  :: Term
+      s
+      ( PTxInfo
+          :--> PScriptHash
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PBidderInfo
+          :--> PUnit
+      )
+pcheckReclaimDepositLoser = phoistAcyclic $
+  plam $ \txInfo standingBidSh auctionCs auctionTerms bidderInfo -> P.do
+    txInfoFields <- pletFields @["signatories", "validRange"] txInfo
+
+    -- There should be exactly one standing bid reference input.
+    standingBidInput <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositLoser'Error'MissingStandingBidInput)
+          (pfindUniqueRefInputWithScriptHash # standingBidSh # txInfo)
+
+    -- The standing bid reference input should contain the standing
+    -- bid token.
+    standingBidInputResolved <- plet $ pfield @"resolved" # standingBidInput
+    passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'StandingBidInputMissingToken) $
+      ptxOutContainsStandingBidToken # auctionCs # standingBidInputResolved
+
+    -- The standing bid input contains a datum that can be decoded
+    -- as a standing bid state.
+    bidState <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositLoser'Error'FailedToDecodeStandingBidState)
+          (pdecodeInlineDatum @PStandingBidState # standingBidInputResolved)
+
+    -- The bidder deposit's bidder lost the auction.
+    passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'BidderNotLoser) $
+      pbidderLost # bidState # bidderInfo
+
+    -- This redeemer can only be used after the bidding period.
+    passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'IncorrectValidityInterval) $
+      pcontains # (ppostBiddingPeriod # auctionTerms) # txInfoFields.validRange
+
+    -- The payment part of the bidder address should be pkh.
+    bidderPkh <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositLoser'Error'InvalidBidderAddress)
+          (paddrPaymentKeyHash #$ pfield @"biBidderAddress" # bidderInfo)
+
+    -- The bidder deposit's bidder signed the transaction.
+    passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'NoBidderConsent) $
+      ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
     pcon PUnit
