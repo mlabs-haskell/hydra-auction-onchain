@@ -26,10 +26,18 @@ data PBidderDepositError (s :: S)
   | BidderDeposit'ReclaimDepositLoser'Error'IncorrectValidityInterval
   | BidderDeposit'ReclaimDepositLoser'Error'InvalidBidderAddress
   | BidderDeposit'ReclaimDepositLoser'Error'NoBidderConsent
-  | -- DepositCleanup errors
-    BidderDeposit'DepositCleanup'Error'IncorrectValidityInterval
-  | BidderDeposit'DepositCleanup'Error'InvalidBidderAddress
-  | BidderDeposit'DepositCleanup'Error'NoBidderConsent
+  | -- ReclaimDepositAuctionConcluded errors
+    BidderDeposit'ReclaimDepositConcluded'Error'MissingAuctionRefInput
+  | BidderDeposit'ReclaimDepositConcluded'Error'AuctionRefInputMissingToken
+  | BidderDeposit'ReclaimDepositConcluded'Error'FailedToDecodeAuctionState
+  | BidderDeposit'ReclaimDepositConcluded'Error'AuctionNotConcluded
+  | BidderDeposit'ReclaimDepositConcluded'Error'IncorrectValidityInterval
+  | BidderDeposit'ReclaimDepositConcluded'Error'InvalidBidderAddress
+  | BidderDeposit'ReclaimDepositConcluded'Error'NoBidderConsent
+  | -- ReclaimDepositCleanup errors
+    BidderDeposit'ReclaimDepositCleanup'Error'IncorrectValidityInterval
+  | BidderDeposit'ReclaimDepositCleanup'Error'InvalidBidderAddress
+  | BidderDeposit'ReclaimDepositCleanup'Error'NoBidderConsent
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 

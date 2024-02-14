@@ -4,8 +4,8 @@ module HydraAuctionOnchain.Validators.BidderDeposit
   ( PBidderDepositRedeemer
       ( UseDepositWinnerRedeemer
       , ReclaimDepositLoserRedeemer
-      , DepositReclaimedAuctionConcludedRedeemer
-      , DepositCleanupRedeemer
+      , ReclaimDepositAuctionConcludedRedeemer
+      , ReclaimDepositCleanupRedeemer
       )
   , bidderDepositValidator
   ) where
@@ -21,6 +21,7 @@ import HydraAuctionOnchain.Helpers
   )
 import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHash)
 import HydraAuctionOnchain.Lib.ScriptContext (pinputSpentWithRedeemer)
+import HydraAuctionOnchain.Types.AuctionEscrowState (PAuctionEscrowState (AuctionConcluded))
 import HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms
   , pcleanupPeriod
@@ -47,8 +48,8 @@ import Plutarch.Monadic qualified as P
 data PBidderDepositRedeemer (s :: S)
   = UseDepositWinnerRedeemer (Term s (PDataRecord '[]))
   | ReclaimDepositLoserRedeemer (Term s (PDataRecord '[]))
-  | DepositReclaimedAuctionConcludedRedeemer (Term s (PDataRecord '[]))
-  | DepositCleanupRedeemer (Term s (PDataRecord '[]))
+  | ReclaimDepositAuctionConcludedRedeemer (Term s (PDataRecord '[]))
+  | ReclaimDepositCleanupRedeemer (Term s (PDataRecord '[]))
   deriving stock (Generic)
   deriving anyclass (PlutusType, PIsData, PShow, PEq)
 
@@ -108,12 +109,18 @@ bidderDepositValidator = phoistAcyclic $
           # auctionCs
           # auctionTerms
           # bidderInfo
-      DepositCleanupRedeemer _ ->
-        pcheckDepositCleanup
+      ReclaimDepositAuctionConcludedRedeemer _ ->
+        pcheckReclaimDepositAuctionConcluded
+          # txInfo
+          # auctionEscrowSh
+          # auctionCs
+          # auctionTerms
+          # bidderInfo
+      ReclaimDepositCleanupRedeemer _ ->
+        pcheckReclaimDepositCleanup
           # txInfo
           # auctionTerms
           # bidderInfo
-      _ -> undefined
 
 ----------------------------------------------------------------------
 -- UseDepositWinner
@@ -152,7 +159,7 @@ pcheckUseDepositWinner = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'UseDepositWinner'Error'FailedToDecodeStandingBidState)
-          (pdecodeInlineDatum @PStandingBidState # standingBidInputResolved)
+          (pdecodeInlineDatum # standingBidInputResolved)
 
     -- The bidder deposit's bidder won the auction.
     passert $(errCode BidderDeposit'UseDepositWinner'Error'BidderNotWinner) $
@@ -202,7 +209,7 @@ pcheckReclaimDepositLoser = phoistAcyclic $
     txInfoFields <- pletFields @["signatories", "validRange"] txInfo
 
     -- There should be exactly one standing bid reference input.
-    standingBidInput <-
+    standingBidRefInput <-
       plet $
         passertMaybe
           $(errCode BidderDeposit'ReclaimDepositLoser'Error'MissingStandingBidInput)
@@ -210,9 +217,9 @@ pcheckReclaimDepositLoser = phoistAcyclic $
 
     -- The standing bid reference input should contain the standing
     -- bid token.
-    standingBidInputResolved <- plet $ pfield @"resolved" # standingBidInput
+    standingBidRefInputResolved <- plet $ pfield @"resolved" # standingBidRefInput
     passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'StandingBidInputMissingToken) $
-      ptxOutContainsStandingBidToken # auctionCs # standingBidInputResolved
+      ptxOutContainsStandingBidToken # auctionCs # standingBidRefInputResolved
 
     -- The standing bid input contains a datum that can be decoded
     -- as a standing bid state.
@@ -220,7 +227,7 @@ pcheckReclaimDepositLoser = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'ReclaimDepositLoser'Error'FailedToDecodeStandingBidState)
-          (pdecodeInlineDatum @PStandingBidState # standingBidInputResolved)
+          (pdecodeInlineDatum @PStandingBidState # standingBidRefInputResolved)
 
     -- The bidder deposit's bidder lost the auction.
     passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'BidderNotLoser) $
@@ -244,30 +251,97 @@ pcheckReclaimDepositLoser = phoistAcyclic $
     pcon PUnit
 
 ----------------------------------------------------------------------
--- DepositCleanup
+-- ReclaimDepositAuctionConcluded
+--
+-- The bidder deposit is reclaimed by a bidder after the auction
+-- conclusion. If the auction has concluded then the seller and the
+-- winning bidder have already had an opportunity to claim
+-- whichever deposits they are entitled to.
+
+pcheckReclaimDepositAuctionConcluded
+  :: Term
+      s
+      ( PTxInfo
+          :--> PScriptHash
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PBidderInfo
+          :--> PUnit
+      )
+pcheckReclaimDepositAuctionConcluded = phoistAcyclic $
+  plam $ \txInfo auctionEscrowSh auctionCs auctionTerms bidderInfo -> P.do
+    txInfoFields <- pletFields @["signatories", "validRange"] txInfo
+
+    -- There should be exactly one auction escrow reference input.
+    auctionEscrowRefInput <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositConcluded'Error'MissingAuctionRefInput)
+          (pfindUniqueRefInputWithScriptHash # auctionEscrowSh # txInfo)
+
+    -- The auction escrow reference input should contain the auction
+    -- escrow token.
+    auctionEscrowRefInputResolved <- plet $ pfield @"resolved" # auctionEscrowRefInput
+    passert $(errCode BidderDeposit'ReclaimDepositConcluded'Error'AuctionRefInputMissingToken) $
+      ptxOutContainsStandingBidToken # auctionCs # auctionEscrowRefInputResolved
+
+    -- The auction escrow input contains a datum that can be
+    -- decoded as an auction escrow state.
+    auctionState <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositConcluded'Error'FailedToDecodeAuctionState)
+          (pdecodeInlineDatum # auctionEscrowRefInputResolved)
+
+    -- The auction is concluded.
+    passert $(errCode BidderDeposit'ReclaimDepositConcluded'Error'AuctionNotConcluded) $
+      auctionState #== pcon (AuctionConcluded pdnil)
+
+    -- This redeemer can only be used after the bidding period.
+    -- TODO: Remove this check? It is probably redundant since the
+    -- auction can only conclude after the bidding end time, which is
+    -- enforced by the auction escrow validator.
+    passert $(errCode BidderDeposit'ReclaimDepositConcluded'Error'IncorrectValidityInterval) $
+      pcontains # (ppostBiddingPeriod # auctionTerms) # txInfoFields.validRange
+
+    -- The payment part of the bidder address should be pkh.
+    bidderPkh <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ReclaimDepositConcluded'Error'InvalidBidderAddress)
+          (paddrPaymentKeyHash #$ pfield @"biBidderAddress" # bidderInfo)
+
+    -- The bidder deposit's bidder signed the transaction.
+    passert $(errCode BidderDeposit'ReclaimDepositConcluded'Error'NoBidderConsent) $
+      ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
+
+    pcon PUnit
+
+----------------------------------------------------------------------
+-- ReclaimDepositCleanup
 --
 -- If, for whatever reason, there are bidder deposits left during
 -- the cleanup period, then whoever placed a deposit can freely
 -- reclaim it.
 
-pcheckDepositCleanup :: Term s (PTxInfo :--> PAuctionTerms :--> PBidderInfo :--> PUnit)
-pcheckDepositCleanup = phoistAcyclic $
+pcheckReclaimDepositCleanup :: Term s (PTxInfo :--> PAuctionTerms :--> PBidderInfo :--> PUnit)
+pcheckReclaimDepositCleanup = phoistAcyclic $
   plam $ \txInfo auctionTerms bidderInfo -> P.do
     txInfoFields <- pletFields @["signatories", "validRange"] txInfo
 
     -- This redeemer can only be used during the cleanup period.
-    passert $(errCode BidderDeposit'DepositCleanup'Error'IncorrectValidityInterval) $
+    passert $(errCode BidderDeposit'ReclaimDepositCleanup'Error'IncorrectValidityInterval) $
       pcontains # (pcleanupPeriod # auctionTerms) # txInfoFields.validRange
 
     -- The payment part of the bidder address should be pkh.
     bidderPkh <-
       plet $
         passertMaybe
-          $(errCode BidderDeposit'DepositCleanup'Error'InvalidBidderAddress)
+          $(errCode BidderDeposit'ReclaimDepositCleanup'Error'InvalidBidderAddress)
           (paddrPaymentKeyHash #$ pfield @"biBidderAddress" # bidderInfo)
 
     -- The bidder deposit's bidder signed the transaction.
-    passert $(errCode BidderDeposit'DepositCleanup'Error'NoBidderConsent) $
+    passert $(errCode BidderDeposit'ReclaimDepositCleanup'Error'NoBidderConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
     pcon PUnit
