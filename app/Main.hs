@@ -4,6 +4,7 @@ import HydraAuctionOnchain.Scripts
   ( auctionEscrowValidatorUntyped
   , auctionMetadataValidatorUntyped
   , auctionMintingPolicyUntyped
+  , bidderDepositValidatorUntyped
   , standingBidValidatorUntyped
   , writeScript
   )
@@ -27,6 +28,7 @@ main =
       writeAuctionMintingPolicy
       writeAuctionEscrowValidator
       writeStandingBidValidator
+      writeBidderDepositValidator
       writeAuctionMetadataValidator
     AuctionMintingPolicy ->
       writeAuctionMintingPolicy
@@ -34,6 +36,8 @@ main =
       writeAuctionEscrowValidator
     StandingBidValidator ->
       writeStandingBidValidator
+    BidderDepositValidator ->
+      writeBidderDepositValidator
     AuctionMetadataValidator ->
       writeAuctionMetadataValidator
 
@@ -58,6 +62,13 @@ writeStandingBidValidator =
     "compiled/standing_bid_validator.plutus"
     standingBidValidatorUntyped
 
+writeBidderDepositValidator :: IO ()
+writeBidderDepositValidator =
+  writeScript
+    "Bidder deposit validator"
+    "compiled/bidder_deposit_validator.plutus"
+    bidderDepositValidatorUntyped
+
 writeAuctionMetadataValidator :: IO ()
 writeAuctionMetadataValidator =
   writeScript
@@ -70,6 +81,7 @@ data ScriptToCompile
   | AuctionMintingPolicy
   | AuctionEscrowValidator
   | StandingBidValidator
+  | BidderDepositValidator
   | AuctionMetadataValidator
   deriving stock (Show, Eq)
 
@@ -79,6 +91,7 @@ toScript = \case
   "auction_mp" -> Just AuctionMintingPolicy
   "auction_escrow" -> Just AuctionEscrowValidator
   "standing_bid" -> Just StandingBidValidator
+  "bidder_deposit" -> Just BidderDepositValidator
   "metadata" -> Just AuctionMetadataValidator
   _ -> Nothing
 

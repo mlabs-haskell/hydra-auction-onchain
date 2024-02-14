@@ -5,6 +5,8 @@ module HydraAuctionOnchain.Scripts
   , auctionMetadataValidatorUntyped
   , auctionMintingPolicyScript
   , auctionMintingPolicyUntyped
+  , bidderDepositValidatorScript
+  , bidderDepositValidatorUntyped
   , compileScript
   , standingBidValidatorScript
   , standingBidValidatorUntyped
@@ -17,15 +19,15 @@ import HydraAuctionOnchain.MintingPolicies.Auction (auctionMintingPolicy)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
 import HydraAuctionOnchain.Validators.AuctionEscrow (auctionEscrowValidator)
 import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
+import HydraAuctionOnchain.Validators.BidderDeposit (bidderDepositValidator)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Config (Config), Script, TracingMode (DoTracing), compile)
 import Plutarch.Api.V2 (PCurrencySymbol, PMintingPolicy, PScriptHash, PTxOutRef, PValidator)
 import Plutarch.Unsafe (punsafeCoerce)
 import Ply.Plutarch.TypedWriter (TypedWriter, writeTypedScript)
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Auction MP
---------------------------------------------------------------------------------
 
 auctionMintingPolicyUntyped
   :: ClosedTerm
@@ -45,9 +47,8 @@ auctionMintingPolicyUntyped = phoistAcyclic $
 auctionMintingPolicyScript :: Script
 auctionMintingPolicyScript = compileScript auctionMintingPolicyUntyped
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- AuctionEscrow
---------------------------------------------------------------------------------
 
 auctionEscrowValidatorUntyped
   :: ClosedTerm
@@ -72,9 +73,8 @@ auctionEscrowValidatorUntyped = phoistAcyclic $
 auctionEscrowValidatorScript :: Script
 auctionEscrowValidatorScript = compileScript auctionEscrowValidatorUntyped
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- StandingBid
---------------------------------------------------------------------------------
 
 standingBidValidatorUntyped
   :: ClosedTerm
@@ -95,9 +95,34 @@ standingBidValidatorUntyped = phoistAcyclic $
 standingBidValidatorScript :: Script
 standingBidValidatorScript = compileScript standingBidValidatorUntyped
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
+-- BidderDeposit
+
+bidderDepositValidatorUntyped
+  :: ClosedTerm
+      ( PAsData PScriptHash
+          :--> PAsData PScriptHash
+          :--> PAsData PCurrencySymbol
+          :--> PAsData PAuctionTerms
+          :--> PValidator
+      )
+bidderDepositValidatorUntyped = phoistAcyclic $
+  plam $ \standingBidSh auctionEscrowSh auctionCs auctionTerms datum redeemer ctx ->
+    popaque $
+      bidderDepositValidator
+        # pfromData standingBidSh
+        # pfromData auctionEscrowSh
+        # pfromData auctionCs
+        # pfromData auctionTerms
+        # punsafeCoerce datum
+        # punsafeCoerce redeemer
+        # ctx
+
+bidderDepositValidatorScript :: Script
+bidderDepositValidatorScript = compileScript bidderDepositValidatorUntyped
+
+----------------------------------------------------------------------
 -- AuctionMetadata
---------------------------------------------------------------------------------
 
 auctionMetadataValidatorUntyped :: ClosedTerm PValidator
 auctionMetadataValidatorUntyped = phoistAcyclic $
