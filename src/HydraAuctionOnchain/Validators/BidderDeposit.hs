@@ -21,7 +21,11 @@ import HydraAuctionOnchain.Helpers
   )
 import HydraAuctionOnchain.Lib.Address (paddrPaymentKeyHash)
 import HydraAuctionOnchain.Lib.ScriptContext (pinputSpentWithRedeemer)
-import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, ppostBiddingPeriod)
+import HydraAuctionOnchain.Types.AuctionTerms
+  ( PAuctionTerms
+  , pcleanupPeriod
+  , ppostBiddingPeriod
+  )
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pbidderLost, pbidderWon)
@@ -102,6 +106,11 @@ bidderDepositValidator = phoistAcyclic $
           # txInfo
           # standingBidSh
           # auctionCs
+          # auctionTerms
+          # bidderInfo
+      DepositCleanupRedeemer _ ->
+        pcheckDepositCleanup
+          # txInfo
           # auctionTerms
           # bidderInfo
       _ -> undefined
@@ -230,6 +239,35 @@ pcheckReclaimDepositLoser = phoistAcyclic $
 
     -- The bidder deposit's bidder signed the transaction.
     passert $(errCode BidderDeposit'ReclaimDepositLoser'Error'NoBidderConsent) $
+      ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
+
+    pcon PUnit
+
+----------------------------------------------------------------------
+-- DepositCleanup
+--
+-- If, for whatever reason, there are bidder deposits left during
+-- the cleanup period, then whoever placed a deposit can freely
+-- reclaim it.
+
+pcheckDepositCleanup :: Term s (PTxInfo :--> PAuctionTerms :--> PBidderInfo :--> PUnit)
+pcheckDepositCleanup = phoistAcyclic $
+  plam $ \txInfo auctionTerms bidderInfo -> P.do
+    txInfoFields <- pletFields @["signatories", "validRange"] txInfo
+
+    -- This redeemer can only be used during the cleanup period.
+    passert $(errCode BidderDeposit'DepositCleanup'Error'IncorrectValidityInterval) $
+      pcontains # (pcleanupPeriod # auctionTerms) # txInfoFields.validRange
+
+    -- The payment part of the bidder address should be pkh.
+    bidderPkh <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'DepositCleanup'Error'InvalidBidderAddress)
+          (paddrPaymentKeyHash #$ pfield @"biBidderAddress" # bidderInfo)
+
+    -- The bidder deposit's bidder signed the transaction.
+    passert $(errCode BidderDeposit'DepositCleanup'Error'NoBidderConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
     pcon PUnit

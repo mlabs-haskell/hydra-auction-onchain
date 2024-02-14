@@ -26,6 +26,10 @@ data PBidderDepositError (s :: S)
   | BidderDeposit'ReclaimDepositLoser'Error'IncorrectValidityInterval
   | BidderDeposit'ReclaimDepositLoser'Error'InvalidBidderAddress
   | BidderDeposit'ReclaimDepositLoser'Error'NoBidderConsent
+  | -- DepositCleanup errors
+    BidderDeposit'DepositCleanup'Error'IncorrectValidityInterval
+  | BidderDeposit'DepositCleanup'Error'InvalidBidderAddress
+  | BidderDeposit'DepositCleanup'Error'NoBidderConsent
   deriving stock (Generic, Eq)
   deriving anyclass (PlutusType)
 
