@@ -17,6 +17,11 @@ import Data.Text (Text)
 import Data.Text qualified as T (unpack)
 import HydraAuctionOnchain.MintingPolicies.Auction (auctionMintingPolicy)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
+import HydraAuctionOnchain.Types.Scripts
+  ( PAuctionEscrowScriptHash
+  , PFeeEscrowScriptHash
+  , PStandingBidScriptHash
+  )
 import HydraAuctionOnchain.Validators.AuctionEscrow (auctionEscrowValidator)
 import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
 import HydraAuctionOnchain.Validators.BidderDeposit (bidderDepositValidator)
@@ -52,8 +57,8 @@ auctionMintingPolicyScript = compileScript auctionMintingPolicyUntyped
 
 auctionEscrowValidatorUntyped
   :: ClosedTerm
-      ( PAsData PScriptHash
-          :--> PAsData PScriptHash
+      ( PAsData PStandingBidScriptHash
+          :--> PAsData PFeeEscrowScriptHash
           :--> PAsData PCurrencySymbol
           :--> PAsData PAuctionTerms
           :--> PValidator
@@ -100,8 +105,8 @@ standingBidValidatorScript = compileScript standingBidValidatorUntyped
 
 bidderDepositValidatorUntyped
   :: ClosedTerm
-      ( PAsData PScriptHash
-          :--> PAsData PScriptHash
+      ( PAsData PStandingBidScriptHash
+          :--> PAsData PAuctionEscrowScriptHash
           :--> PAsData PCurrencySymbol
           :--> PAsData PAuctionTerms
           :--> PValidator

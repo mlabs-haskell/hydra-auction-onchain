@@ -39,6 +39,7 @@ import HydraAuctionOnchain.Types.AuctionTerms
   )
 import HydraAuctionOnchain.Types.BidTerms (psellerPayout, pvalidateBidTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe, passertMaybeData)
+import HydraAuctionOnchain.Types.Scripts (PFeeEscrowScriptHash, PStandingBidScriptHash)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState (PStandingBidState))
 import HydraAuctionOnchain.Types.Tokens
   ( pauctionTokenBundleBurned
@@ -51,7 +52,6 @@ import Plutarch.Api.V2
   , PCurrencySymbol
   , PPubKeyHash
   , PScriptContext
-  , PScriptHash
   , PTxInInfo
   , PTxInfo
   )
@@ -60,9 +60,8 @@ import Plutarch.Extra.Maybe (pdnothing)
 import Plutarch.Extra.ScriptContext (ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Redeemers
---------------------------------------------------------------------------------
 
 data PAuctionEscrowRedeemer (s :: S)
   = StartBiddingRedeemer (Term s (PDataRecord '[]))
@@ -84,15 +83,14 @@ pisConcluding = phoistAcyclic $
     SellerReclaimsRedeemer _ -> pcon PTrue
     _ -> pcon PFalse
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Validator
---------------------------------------------------------------------------------
 
 auctionEscrowValidator
   :: Term
       s
-      ( PScriptHash
-          :--> PScriptHash
+      ( PStandingBidScriptHash
+          :--> PFeeEscrowScriptHash
           :--> PCurrencySymbol
           :--> PAuctionTerms
           :--> PAuctionEscrowState
@@ -167,14 +165,13 @@ auctionEscrowValidator = phoistAcyclic $
           # ownInput
           # sellerPkh
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- StartBidding
---------------------------------------------------------------------------------
 
 pcheckStartBidding
   :: Term
       s
-      ( PScriptHash
+      ( PStandingBidScriptHash
           :--> PTxInfo
           :--> PCurrencySymbol
           :--> PAuctionTerms
@@ -202,9 +199,8 @@ pcheckStartBidding = phoistAcyclic $
         # txInfoFields.signatories
         # pdata sellerPkh
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction escrow state transition
-    ----------------------------------------------------------------------------
 
     -- There should be exactly one auction escrow output.
     ownOutput <-
@@ -233,16 +229,15 @@ pcheckStartBidding = phoistAcyclic $
         # oldAuctionState
         # newAuctionState
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check standing bid state
-    ----------------------------------------------------------------------------
 
     -- There should be exactly one standing bid output.
     standingBidOutput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'StartBidding'Error'MissingStandingBidOutput)
-          (pfindUniqueOutputWithScriptHash # standingBidSh # txInfo)
+          (pfindUniqueOutputWithScriptHash # pto standingBidSh # txInfo)
 
     -- The standing bid output's datum should be decodable
     -- as a standing bid state.
@@ -259,15 +254,14 @@ pcheckStartBidding = phoistAcyclic $
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- StartBidding
---------------------------------------------------------------------------------
 
 pcheckBidderBuys
   :: Term
       s
-      ( PScriptHash
-          :--> PScriptHash
+      ( PStandingBidScriptHash
+          :--> PFeeEscrowScriptHash
           :--> PTxInfo
           :--> PCurrencySymbol
           :--> PAuctionTerms
@@ -289,9 +283,8 @@ pcheckBidderBuys = phoistAcyclic $
     passert $(errCode AuctionEscrow'BidderBuys'Error'IncorrectValidityInterval) $
       pcontains # (ppurchasePeriod # auctionTerms) # txInfoFields.validRange
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction escrow state transition
-    ----------------------------------------------------------------------------
 
     -- There should be exactly one auction escrow output.
     ownOutput <-
@@ -327,16 +320,15 @@ pcheckBidderBuys = phoistAcyclic $
         # oldAuctionState
         # newAuctionState
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction lot transfer to the winning bidder
-    ----------------------------------------------------------------------------
 
     -- There should be exactly one standing bid input.
     standingBidInput <-
       plet $
         passertMaybe
           $(errCode AuctionEscrow'BidderBuys'Error'MissingStandingBidInput)
-          (pfindUniqueInputWithScriptHash # standingBidSh # txInfo)
+          (pfindUniqueInputWithScriptHash # pto standingBidSh # txInfo)
 
     -- The standing bid input should contain the standing
     -- bid token.
@@ -380,35 +372,32 @@ pcheckBidderBuys = phoistAcyclic $
     passert $(errCode AuctionEscrow'BidderBuys'Error'NoBidderConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata bidderPkh
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check ADA payment to the seller
-    ----------------------------------------------------------------------------
 
     -- The seller receives the proceeds of the auction.
     passert $(errCode AuctionEscrow'BidderBuys'Error'SellerPaymentIncorrect) $
       (psellerPayout # auctionTerms # bidTerms)
         #<= (plovelaceValueOf #$ pvaluePaidToAddr # txInfo # auctionTermsFields.sellerAddress)
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction fees
-    ----------------------------------------------------------------------------
 
     -- The total auction fees are sent to
     -- the fee escrow validator.
     passert $(errCode AuctionEscrow'BidderBuys'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
-        #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # feeEscrowSh)
+        #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # pto feeEscrowSh)
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- SellerReclaims
---------------------------------------------------------------------------------
 
 pcheckSellerReclaims
   :: Term
       s
-      ( PScriptHash
+      ( PFeeEscrowScriptHash
           :--> PTxInfo
           :--> PCurrencySymbol
           :--> PAuctionTerms
@@ -432,9 +421,8 @@ pcheckSellerReclaims = phoistAcyclic $
     passert $(errCode AuctionEscrow'SellerReclaims'Error'IncorrectValidityInterval) $
       pcontains # (ppenaltyPeriod # auctionTerms) # txInfoFields.validRange
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction escrow state transition
-    ----------------------------------------------------------------------------
 
     -- There should be exactly one auction escrow output.
     ownOutput <-
@@ -470,9 +458,8 @@ pcheckSellerReclaims = phoistAcyclic $
         # oldAuctionState
         # newAuctionState
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction lot transfer back to the seller
-    ----------------------------------------------------------------------------
 
     -- The auction lot is returned to the seller.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToSellerIncorrect) $
@@ -483,21 +470,19 @@ pcheckSellerReclaims = phoistAcyclic $
     passert $(errCode AuctionEscrow'SellerReclaims'Error'NoSellerConsent) $
       ptxSignedBy # txInfoFields.signatories # pdata sellerPkh
 
-    ----------------------------------------------------------------------------
+    ------------------------------------------------------------------
     -- Check auction fees
-    ----------------------------------------------------------------------------
 
     -- The total auction fees are sent to
     -- the fee escrow validator.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'PaymentToFeeEscrowIncorrect) $
       (ptotalAuctionFees # auctionTerms)
-        #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # feeEscrowSh)
+        #<= (plovelaceValueOf #$ pvaluePaidToScript # txInfo # pto feeEscrowSh)
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- CleanupAuction
---------------------------------------------------------------------------------
 
 pcheckCleanupAuction
   :: Term

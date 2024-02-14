@@ -28,9 +28,8 @@ import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.ScriptContext (ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Redeemers
---------------------------------------------------------------------------------
 
 data PStandingBidRedeemer (s :: S)
   = NewBidRedeemer (Term s (PDataRecord '[]))
@@ -42,9 +41,8 @@ data PStandingBidRedeemer (s :: S)
 instance DerivePlutusType PStandingBidRedeemer where
   type DPTStrat _ = PlutusTypeData
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Validator
---------------------------------------------------------------------------------
 
 standingBidValidator
   :: Term
@@ -90,9 +88,8 @@ standingBidValidator = phoistAcyclic $
       ConcludeAuctionRedeemer _ ->
         pcheckConcludeAuction # txInfo # auctionCs
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- NewBid
---------------------------------------------------------------------------------
 
 pcheckNewBid
   :: Term
@@ -139,9 +136,8 @@ pcheckNewBid = phoistAcyclic $
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- MoveToHydra
---------------------------------------------------------------------------------
 
 pcheckMoveToHydra :: Term s (PTxInfo :--> PAuctionTerms :--> PUnit)
 pcheckMoveToHydra = phoistAcyclic $
@@ -160,9 +156,8 @@ pcheckMoveToHydra = phoistAcyclic $
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- ConcludeAuction
---------------------------------------------------------------------------------
 
 pcheckConcludeAuction :: Term s (PTxInfo :--> PCurrencySymbol :--> PUnit)
 pcheckConcludeAuction = phoistAcyclic $

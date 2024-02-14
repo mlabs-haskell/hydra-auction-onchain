@@ -29,6 +29,7 @@ import HydraAuctionOnchain.Types.AuctionTerms
   )
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
+import HydraAuctionOnchain.Types.Scripts (PAuctionEscrowScriptHash, PStandingBidScriptHash)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pbidderLost, pbidderWon)
 import HydraAuctionOnchain.Types.Tokens
   ( ptxOutContainsAuctionEscrowToken
@@ -37,7 +38,7 @@ import HydraAuctionOnchain.Types.Tokens
 import HydraAuctionOnchain.Validators.AuctionEscrow
   ( PAuctionEscrowRedeemer (BidderBuysRedeemer)
   )
-import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo)
+import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInfo)
 import Plutarch.Extra.Interval (pcontains)
 import Plutarch.Extra.ScriptContext (ptxSignedBy)
 import Plutarch.Monadic qualified as P
@@ -64,8 +65,8 @@ instance PTryFrom PData (PAsData PBidderDepositRedeemer)
 bidderDepositValidator
   :: Term
       s
-      ( PScriptHash
-          :--> PScriptHash
+      ( PStandingBidScriptHash
+          :--> PAuctionEscrowScriptHash
           :--> PCurrencySymbol
           :--> PAuctionTerms
           :--> PBidderInfo
@@ -132,8 +133,8 @@ pcheckUseDepositWinner
   :: Term
       s
       ( PTxInfo
-          :--> PScriptHash
-          :--> PScriptHash
+          :--> PStandingBidScriptHash
+          :--> PAuctionEscrowScriptHash
           :--> PCurrencySymbol
           :--> PBidderInfo
           :--> PUnit
@@ -145,7 +146,7 @@ pcheckUseDepositWinner = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'UseDepositWinner'Error'MissingStandingBidInput)
-          (pfindUniqueInputWithScriptHash # standingBidSh # txInfo)
+          (pfindUniqueInputWithScriptHash # pto standingBidSh # txInfo)
 
     -- The standing bid input should contain the standing
     -- bid token.
@@ -170,7 +171,7 @@ pcheckUseDepositWinner = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'UseDepositWinner'Error'MissingAuctionEscrowInput)
-          (pfindUniqueInputWithScriptHash # auctionEscrowSh # txInfo)
+          (pfindUniqueInputWithScriptHash # pto auctionEscrowSh # txInfo)
 
     -- The auction escrow input should contain the auction
     -- escrow token.
@@ -198,7 +199,7 @@ pcheckReclaimDepositLoser
   :: Term
       s
       ( PTxInfo
-          :--> PScriptHash
+          :--> PStandingBidScriptHash
           :--> PCurrencySymbol
           :--> PAuctionTerms
           :--> PBidderInfo
@@ -213,7 +214,7 @@ pcheckReclaimDepositLoser = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'ReclaimDepositLoser'Error'MissingStandingBidInput)
-          (pfindUniqueRefInputWithScriptHash # standingBidSh # txInfo)
+          (pfindUniqueRefInputWithScriptHash # pto standingBidSh # txInfo)
 
     -- The standing bid reference input should contain the standing
     -- bid token.
@@ -262,7 +263,7 @@ pcheckReclaimDepositAuctionConcluded
   :: Term
       s
       ( PTxInfo
-          :--> PScriptHash
+          :--> PAuctionEscrowScriptHash
           :--> PCurrencySymbol
           :--> PAuctionTerms
           :--> PBidderInfo
@@ -277,7 +278,7 @@ pcheckReclaimDepositAuctionConcluded = phoistAcyclic $
       plet $
         passertMaybe
           $(errCode BidderDeposit'ReclaimDepositConcluded'Error'MissingAuctionRefInput)
-          (pfindUniqueRefInputWithScriptHash # auctionEscrowSh # txInfo)
+          (pfindUniqueRefInputWithScriptHash # pto auctionEscrowSh # txInfo)
 
     -- The auction escrow reference input should contain the auction
     -- escrow token.

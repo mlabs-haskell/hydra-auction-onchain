@@ -121,6 +121,7 @@ library
     HydraAuctionOnchain.Types.BidderInfo
     HydraAuctionOnchain.Types.BidTerms
     HydraAuctionOnchain.Types.Error
+    HydraAuctionOnchain.Types.Scripts
     HydraAuctionOnchain.Types.StandingBidState
     HydraAuctionOnchain.Types.Tokens
     HydraAuctionOnchain.Validators.AuctionEscrow
