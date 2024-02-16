@@ -9,6 +9,7 @@ module HydraAuctionOnchain.Helpers
   , pfindUniqueInputWithToken
   , pfindUniqueOutputWithAddress
   , pfindUniqueOutputWithScriptHash
+  , pfindUniqueRefInputWithScriptHash
   , pgetOwnInput
   , pintervalFiniteClosedOpen
   , ponlyOneInputFromAddress
@@ -86,6 +87,18 @@ pfindUniqueInputWithScriptHash = phoistAcyclic $
             paddressHasScriptHash # addr # sh
         )
       #$ pfield @"inputs"
+      # txInfo
+
+pfindUniqueRefInputWithScriptHash :: Term s (PScriptHash :--> PTxInfo :--> PMaybe PTxInInfo)
+pfindUniqueRefInputWithScriptHash = phoistAcyclic $
+  plam $ \sh txInfo ->
+    pfindUnique
+      # plam
+        ( \utxo -> P.do
+            addr <- plet $ pfield @"address" #$ pfield @"resolved" # utxo
+            paddressHasScriptHash # addr # sh
+        )
+      #$ pfield @"referenceInputs"
       # txInfo
 
 pfindUniqueInputWithToken

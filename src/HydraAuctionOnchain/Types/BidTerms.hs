@@ -3,6 +3,7 @@
 module HydraAuctionOnchain.Types.BidTerms
   ( PBidTerms (PBidTerms)
   , bidderSigMessageLength
+  , pbidderMadeBid
   , psellerPayout
   , pvalidateBidTerms
   ) where
@@ -37,6 +38,17 @@ instance DerivePlutusType PBidTerms where
 
 instance PTryFrom PData PBidTerms
 
+----------------------------------------------------------------------
+-- Bidder
+
+pbidderMadeBid :: Term s (PBidTerms :--> PBidderInfo :--> PBool)
+pbidderMadeBid = phoistAcyclic $
+  plam $ \bidTerms bidderInfo ->
+    bidderInfo #== pfield @"btBidder" # bidTerms
+
+----------------------------------------------------------------------
+-- Seller payout
+
 psellerPayout :: Term s (PAuctionTerms :--> PBidTerms :--> PInteger)
 psellerPayout = phoistAcyclic $
   plam $ \auctionTerms bidTerms -> P.do
@@ -44,9 +56,8 @@ psellerPayout = phoistAcyclic $
     totalAuctionFees <- plet $ ptotalAuctionFees # auctionTerms
     bidPrice - totalAuctionFees
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Validation
---------------------------------------------------------------------------------
 
 pvalidateBidTerms :: Term s (PCurrencySymbol :--> PAuctionTerms :--> PBidTerms :--> PBool)
 pvalidateBidTerms = phoistAcyclic $

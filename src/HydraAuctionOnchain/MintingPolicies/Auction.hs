@@ -11,13 +11,14 @@ import HydraAuctionOnchain.Types.AuctionInfo (PAuctionInfo)
 import HydraAuctionOnchain.Types.AuctionTerms (pvalidateAuctionTerms)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.Tokens
-  ( pauctionTokenBundleBurned
-  , pauctionTokenBundleMinted
+  ( pauctionTokenBundleMinted
+  , pauctionTokenBundleValueBurned
   , ptxOutContainsAuctionMetadataToken
   )
+import Plutarch.Api.V1.AssocMap qualified as Map (plookup)
 import Plutarch.Api.V1.Value (pnormalize)
 import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PScriptHash, PTxOutRef)
-import Plutarch.Extra.Maybe (pisJust)
+import Plutarch.Extra.Maybe (pisJust, pjust)
 import Plutarch.Extra.ScriptContext (pfindTxInByTxOutRef)
 import Plutarch.Monadic qualified as P
 
@@ -73,9 +74,9 @@ pcheckMintAuction = phoistAcyclic $
 
     -- The auction state, auction metadata, and standing bid tokens
     -- of the auction should all be minted.
-    -- No other tokens should be minted or burned.
+    -- No other tokens should be minted or burned using this policy.
     passert $(errCode AuctionMp'MintAuction'Error'AuctionTokenBundleNotMinted) $
-      mintValue #== pauctionTokenBundleMinted # auctionCs
+      Map.plookup # auctionCs # pto mintValue #== pjust # pauctionTokenBundleMinted
 
     -- The utxo nonce parameter of the minting policy should be a
     -- reference to a utxo input spent by the transaction.
@@ -121,6 +122,6 @@ pcheckBurnAuction = phoistAcyclic $
     -- of the auction should all be burned.
     -- No other tokens should be minted or burned.
     passert $(errCode AuctionMp'BurnAuction'Error'AuctionTokenBundleNotBurned) $
-      mintValue #== pauctionTokenBundleBurned # auctionCs
+      mintValue #== pauctionTokenBundleValueBurned # auctionCs
 
     pcon PUnit

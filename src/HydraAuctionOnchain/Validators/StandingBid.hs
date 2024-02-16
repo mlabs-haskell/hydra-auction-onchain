@@ -14,6 +14,7 @@ import HydraAuctionOnchain.Helpers
   , ponlyOneInputFromAddress
   , putxoAddress
   )
+import HydraAuctionOnchain.Lib.ScriptContext (pinputSpentWithRedeemer)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
@@ -22,21 +23,13 @@ import HydraAuctionOnchain.Types.Tokens
   , ptxOutContainsStandingBidToken
   )
 import HydraAuctionOnchain.Validators.AuctionEscrow (pisConcluding)
-import Plutarch.Api.V2
-  ( PCurrencySymbol
-  , PScriptContext
-  , PScriptPurpose (PSpending)
-  , PTxInInfo
-  , PTxInfo
-  )
+import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInInfo, PTxInfo)
 import Plutarch.Extra.Interval (pcontains)
-import Plutarch.Extra.Maybe (pmaybe)
-import Plutarch.Extra.ScriptContext (ptryFromRedeemer, ptxSignedBy)
+import Plutarch.Extra.ScriptContext (ptxSignedBy)
 import Plutarch.Monadic qualified as P
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Redeemers
---------------------------------------------------------------------------------
 
 data PStandingBidRedeemer (s :: S)
   = NewBidRedeemer (Term s (PDataRecord '[]))
@@ -48,9 +41,8 @@ data PStandingBidRedeemer (s :: S)
 instance DerivePlutusType PStandingBidRedeemer where
   type DPTStrat _ = PlutusTypeData
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- Validator
---------------------------------------------------------------------------------
 
 standingBidValidator
   :: Term
@@ -96,9 +88,8 @@ standingBidValidator = phoistAcyclic $
       ConcludeAuctionRedeemer _ ->
         pcheckConcludeAuction # txInfo # auctionCs
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- NewBid
---------------------------------------------------------------------------------
 
 pcheckNewBid
   :: Term
@@ -145,9 +136,8 @@ pcheckNewBid = phoistAcyclic $
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- MoveToHydra
---------------------------------------------------------------------------------
 
 pcheckMoveToHydra :: Term s (PTxInfo :--> PAuctionTerms :--> PUnit)
 pcheckMoveToHydra = phoistAcyclic $
@@ -166,9 +156,8 @@ pcheckMoveToHydra = phoistAcyclic $
 
     pcon PUnit
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------
 -- ConcludeAuction
---------------------------------------------------------------------------------
 
 pcheckConcludeAuction :: Term s (PTxInfo :--> PCurrencySymbol :--> PUnit)
 pcheckConcludeAuction = phoistAcyclic $
@@ -185,14 +174,7 @@ pcheckConcludeAuction = phoistAcyclic $
     -- `BidderBuys` or `SellerReclaims` redeemer. Implicitly, this
     -- means that the auction is concluding with either the winning
     -- bidder buying the auction lot or the seller reclaiming it.
-    redeemers <- plet $ pfield @"redeemers" # txInfo
-    auctionEscrowOref <- plet $ pfield @"outRef" # auctionEscrowUtxo
-    spendsAuctionEscrow <- plet $ pcon $ PSpending $ pdcons @"_0" # auctionEscrowOref # pdnil
-    auctionEscrowRedeemer <- plet $ ptryFromRedeemer # spendsAuctionEscrow # redeemers
     passert $(errCode StandingBid'ConcludeAuction'Error'InvalidAuctionEscrowRedeemer) $
-      pmaybe
-        # pcon PFalse
-        # plam (\redeemer -> pisConcluding # pfromData redeemer)
-        # auctionEscrowRedeemer
+      pinputSpentWithRedeemer # pisConcluding # txInfo # auctionEscrowUtxo
 
     pcon PUnit

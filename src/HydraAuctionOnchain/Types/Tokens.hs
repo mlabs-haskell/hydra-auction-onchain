@@ -3,23 +3,25 @@ module HydraAuctionOnchain.Types.Tokens
   , auctionMetadataTokenName
   , pauctionTokenBundleBurned
   , pauctionTokenBundleMinted
+  , pauctionTokenBundleValueBurned
+  , pauctionTokenBundleValueMinted
   , ptxOutContainsAuctionEscrowToken
   , ptxOutContainsAuctionMetadataToken
   , ptxOutContainsStandingBidToken
   , standingBidTokenName
   ) where
 
+import Plutarch.Api.V1.AssocMap (PMap)
+import Plutarch.Api.V1.AssocMap qualified as Map (pempty, pinsert, psingleton)
 import Plutarch.Api.V1.Value (pvalueOf)
-import Plutarch.Api.V1.Value qualified as Value (psingleton)
 import Plutarch.Api.V2
   ( AmountGuarantees (NonZero)
   , KeyGuarantees (Sorted)
   , PCurrencySymbol
   , PTokenName
   , PTxOut
-  , PValue
+  , PValue (PValue)
   )
-import Plutarch.Monadic qualified as P
 
 -- | Auction state token, identifying the true auction escrow.
 auctionEscrowTokenName :: Term s PTokenName
@@ -32,24 +34,6 @@ auctionMetadataTokenName = pconstant "AUCTION_METADATA"
 -- | Standing bid token, identifying the true standing bid.
 standingBidTokenName :: Term s PTokenName
 standingBidTokenName = pconstant "STANDING_BID"
-
-pauctionTokenBundle :: Term s (PCurrencySymbol :--> PInteger :--> PValue 'Sorted 'NonZero)
-pauctionTokenBundle = phoistAcyclic $
-  plam $ \auctionCs amount -> P.do
-    mkValue <- plet $ plam $ \tn -> Value.psingleton # auctionCs # tn # amount
-    (mkValue # auctionMetadataTokenName)
-      <> (mkValue # auctionEscrowTokenName)
-      <> (mkValue # standingBidTokenName)
-
-pauctionTokenBundleMinted :: Term s (PCurrencySymbol :--> PValue 'Sorted 'NonZero)
-pauctionTokenBundleMinted = phoistAcyclic $
-  plam $ \auctionCs ->
-    pauctionTokenBundle # auctionCs # 1
-
-pauctionTokenBundleBurned :: Term s (PCurrencySymbol :--> PValue 'Sorted 'NonZero)
-pauctionTokenBundleBurned = phoistAcyclic $
-  plam $ \auctionCs ->
-    pauctionTokenBundle # auctionCs # (-1)
 
 ptxOutContainsAuctionToken :: Term s (PCurrencySymbol :--> PTokenName :--> PTxOut :--> PBool)
 ptxOutContainsAuctionToken = phoistAcyclic $
@@ -70,3 +54,48 @@ ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool
 ptxOutContainsStandingBidToken = phoistAcyclic $
   plam $ \auctionCs txOut ->
     ptxOutContainsAuctionToken # auctionCs # standingBidTokenName # txOut
+
+----------------------------------------------------------------------
+-- Token bundle
+
+pauctionTokenBundle :: Term s (PInteger :--> PMap 'Sorted PTokenName PInteger)
+pauctionTokenBundle = phoistAcyclic $
+  plam $ \amount ->
+    Map.pinsert
+      # auctionMetadataTokenName
+      # amount
+      #$ Map.pinsert
+      # auctionEscrowTokenName
+      # amount
+      #$ Map.pinsert
+      # standingBidTokenName
+      # amount
+      # Map.pempty
+
+pauctionTokenBundleMinted :: Term s (PMap 'Sorted PTokenName PInteger)
+pauctionTokenBundleMinted =
+  phoistAcyclic $
+    pauctionTokenBundle # 1
+
+pauctionTokenBundleBurned :: Term s (PMap 'Sorted PTokenName PInteger)
+pauctionTokenBundleBurned =
+  phoistAcyclic $
+    pauctionTokenBundle # (-1)
+
+----------------------------------------------------------------------
+-- Token bundle value
+
+pauctionTokenBundleValue :: Term s (PCurrencySymbol :--> PInteger :--> PValue 'Sorted 'NonZero)
+pauctionTokenBundleValue = phoistAcyclic $
+  plam $ \auctionCs amount ->
+    pcon $ PValue $ Map.psingleton # auctionCs #$ pauctionTokenBundle # amount
+
+pauctionTokenBundleValueMinted :: Term s (PCurrencySymbol :--> PValue 'Sorted 'NonZero)
+pauctionTokenBundleValueMinted = phoistAcyclic $
+  plam $ \auctionCs ->
+    pauctionTokenBundleValue # auctionCs # 1
+
+pauctionTokenBundleValueBurned :: Term s (PCurrencySymbol :--> PValue 'Sorted 'NonZero)
+pauctionTokenBundleValueBurned = phoistAcyclic $
+  plam $ \auctionCs ->
+    pauctionTokenBundleValue # auctionCs # (-1)
