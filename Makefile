@@ -1,4 +1,4 @@
-.PHONY: build test repl format hoogle all_scripts auction_escrow_validator standing_bid_validator auction_metadata_validator
+.PHONY: build test repl format hoogle all_scripts auction_escrow_validator standing_bid_validator bidder_deposit_validator auction_metadata_validator
 
 hs-sources := $(shell fd --no-ignore-parent -ehs)
 cabal-sources := $(shell fd --no-ignore-parent -ecabal)
@@ -26,6 +26,9 @@ auction_escrow_validator:
 
 standing_bid_validator:
 	cabal v2-run hydra-auction-onchain-exe -- --script standing_bid
+
+bidder_deposit_validator:
+	cabal v2-run hydra-auction-onchain-exe -- --script bidder_deposit
 
 auction_metadata_validator:
 	cabal v2-run hydra-auction-onchain-exe -- --script metadata
