@@ -255,7 +255,7 @@ pcheckStartBidding = phoistAcyclic $
     pcon PUnit
 
 ----------------------------------------------------------------------
--- StartBidding
+-- BidderBuys
 
 pcheckBidderBuys
   :: Term

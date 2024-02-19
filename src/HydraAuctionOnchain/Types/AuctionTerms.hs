@@ -6,6 +6,7 @@ module HydraAuctionOnchain.Types.AuctionTerms
   , pcleanupPeriod
   , ppenaltyPeriod
   , ppostBiddingPeriod
+  , ppostPurchasePeriod
   , ppurchasePeriod
   , ptotalAuctionFees
   , pvalidateAuctionTerms
@@ -168,3 +169,8 @@ ppostBiddingPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
 ppostBiddingPeriod = phoistAcyclic $
   plam $ \auctionTerms ->
     Interval.pfrom #$ pfield @"biddingEnd" # auctionTerms
+
+ppostPurchasePeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
+ppostPurchasePeriod = phoistAcyclic $
+  plam $ \auctionTerms ->
+    Interval.pfrom #$ pfield @"purchaseDeadline" # auctionTerms
