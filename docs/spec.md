@@ -10,18 +10,21 @@ The __auction minting policy__ atomically mints (and burns)
 three non-fungible tokens.
 One of then, __auction metadata token__,
 is used to identify non-changable information about the auction;
-other two are known as auction __state tokens__ and are used to identify outputs that holds:
+other two are known as auction __state tokens__ and are used to identify two auction's state outputs:
 * __auction escrow utxo__ that holds auction lot in its value and auction state in its datum;
-* __standing bid utxo__ that TODO:
+* __standing bid utxo__ that holds the (optionally misssing)
+current standing bit.
 
 The __delegate metadata minting policy__ mints
 delegate metadata fungible token,
-which is held under the delegate metadata validator.
-TODO: explain how it's used
+which is held under the delegate metadata validator
+and used to verify available delegate groups
+that provides hydra heads.
 
 The __personal oracle minting policy__ mints
 personal oracle fungible token,
-which is held under the personal oracle validator.
+which is held under the personal oracle validator
+by sellers and bidders.
 
 The auction state is controlled by five validators:
 * auction escrow;
@@ -63,8 +66,8 @@ flowchart
     params -.-> feeEscrow
     params -.-> standingBid
 
-    standingBid -.-> auctionEscrow
     feeEscrow -.-> auctionEscrow
+    standingBid -.-> bidderDeposit
     auctionEscrow -.-> bidderDeposit
   end
 
@@ -112,8 +115,8 @@ This allows any potential participant in the auction protocol
 to discover all active auctions and delegate groups by querying the blockchain.
 
 Personal oracles are used to execute some queries more efficiently:
-* list auctions announced by a seller;
-* list auctions a bidder is participating.
+* list auctions run by a particular seller;
+* list auctions a bidder is takinf participatt;
 
 Also oracles are used to extend longevity of some data
 beyond the point when an auction gets cleaned up on L1.
@@ -227,14 +230,15 @@ which are fixed when it is announced.
 data AuctionTerms = AuctionTerms
   { at'AuctionLot :: AssetClass
   -- ^ NFT being sold in the auction.
-  , at'SellerPkh :: PubKeyHash
-  -- ^ Seller's pubkey hash, which will receive
-  -- the proceeds of the auction (minus fees)
+  , at'SellerAddress :: Adddress
+  -- ^ Seller's address (the payment part should be key-based,
+  -- which will receive the proceeds of the auction (minus fees)
   -- if the auction lot is purchased,
   -- or reclaim the auction lot if it isn't.
   , at'SellerVk  :: BuiltinByteString
-  -- ^ Seller's verification key, used to control
-  -- which bidders receive authorization to participate in the auction.
+  -- ^ Seller's verification key acts as a gatekeeper
+  -- controlling which bidders receive authorization to
+  -- participate in the auction.
   , at'Delegates :: [PubKeyHash]
   -- ^ Group of delegates authorized to run the L2 bidding process.
   , at'BiddingStart :: POSIXTime
@@ -265,35 +269,47 @@ data AuctionTerms = AuctionTerms
   }
 ```
 
-Though the auction terms are not validated on-chain,
-off-chain observers should consider them
-to be valid if the following conditions hold:
+Auction terms are validated on-chain upon minting
+auction metadata and state tokens and cannot be changed.
+Terms are considered to be valid if the following conditions hold:
 
 ```haskell
 validAuctionTerms :: AuctionTerms -> Bool
 validAuctionTerms auTerms@AuctionTerms {..} =
-  at'SellerPkh == hashVKey at'SellerVk &&
-  -- The seller pubkey hash corresponds to the seller verification key.
-  -- Note: this check only becomes possible on-chain in Plutus V3.
-  -- https://github.com/input-output-hk/plutus/pull/5431
-  at'BiddingStart < at'BiddingEnd &&
+
+  -- Auction lot must not include any ADA.
+  adaOf at.AuctionLot == 0 &&
+
+  -- All amounts in the auction lot must be positive.
+  valuePositive at'AuctionLot &&
+
+  -- The payment part of the seller address is a PKH.
+  isJust $ addrPaymentKeyHash at'SellerAddress
+
   -- Bidding ends after it the bidding start time.
-  at'BiddingEnd < at'PurchaseDeadline &&
+  at'BiddingStart < at'BiddingEnd &&
+
   -- The purchase deadline occurs after bidding ends.
-  at'PurchaseDeadline < at'Cleanup &&
+  at'BiddingEnd < at'PurchaseDeadline &&
+
   -- Cleanup happens after the purchase deadline,
   -- so that the seller can claim the winning bidder's deposit
   -- if the auction lot is not sold
-  at'MinimumBidIncrement > 0 &&
+  at'PurchaseDeadline < at'Cleanup &&
+
   -- New bids must be larger than the standing bid.
-  at'AuctionFeePerDelegate > 2_000_000 &&
+  at'MinimumBidIncrement > 0 &&
+
+  -- The auction fees for all delegates must be covered by the starting bid.
+  at'StartingBid > totalAuctionFees auTerms &&
+
   -- The auction fee for each delegate must contain
   -- the min 2 ADA for the utxos that will be sent to the delegates
   -- during fee distribution.
-  at'StartingBid > totalAuctionFees auTerms &&
-  -- The auction fees for all delegates must be covered by the starting bid.
-  length at'Delegates > 0 &&
+  at'AuctionFeePerDelegate > 2_000_000 &&
+
   -- There must be at least one delegate.
+  length at'Delegates > 0
 
 totalAuctionFees :: AuctionTerms -> Integer
 totalAuctionFees AuctionTerms {..} =
@@ -302,14 +318,25 @@ totalAuctionFees AuctionTerms {..} =
 
 Subject to these validity conditions,
 the seller can set the auction terms according to the seller's preferences.
+
 The seller should set the `at'Delegates` field
 to one of the delegate groups that the seller discovers
 by querying the announced delegate groups.
 
+We do not require `at'SellerAddress` matches `at'SellerVk`.
+In some sense they represent two different roles
+so seller can use the same of different credentials
+at their own discretion:
+* `at'SellerAddress` represents a beneficiary
+who receives the proceeds of an auction
+and manages a seller's oracle.
+* `at'SellerVk` acts as an auction gatekeeper
+checking bidders' authorization.
+
 ### Auction state and utxo datums
 
 For any auctions of interest,
-discover their current L1 state by
+one can discover their current L1 state by
 querying the utxos at their corresponding validator addresses
 that are listed in the auction metadata.
 
@@ -330,11 +357,11 @@ type StandingBidDatum = StandingBidState
 newtype StandingBidState = StandingBidState
   { standingBidState :: Maybe BidTerms }
 
--- 3. TODO:
+-- 3. Bidder deposit outputs lock deposits along with info about the bidder that made it.
 
 type BidderDepositDatum = BidderInfo
 
--- 3. TODO:
+-- 3. Doesn't carry any information.
 type FeeEscrowDatum = ()
 
 ```
@@ -343,7 +370,7 @@ The auction escrow and standing bid state can change
 over the lifecycle of the auction
 and they are uniquely identified
 by the non-fungible auction state tokens that their utxos hold
-(`ai'AuctionId.AUCTION` and `ai'AuctionId.STANDING_BID`).
+(policy id `ai'AuctionId` token names are `AUCTION` and `STANDING_BID`).
 All other utxos with no state tokens under
 the auction escrow and standing bid addresses
 must be ignored as illegitimate.
@@ -351,7 +378,7 @@ must be ignored as illegitimate.
 The location of the standing bid token determines
 if and where bids can be placed in the auction:
 
-- If it's at the auction escrow address on L1,
+- If it's at the auction escrow address on L1 (the initial disposition),
 then bids cannot be placed.
 - If it's at the the standing bid address on L1,
 then bids can be placed on L1.
@@ -374,22 +401,15 @@ identifying the bidder in the bid deposit's utxo datum.
 ```haskell
 data BidderInfo = BidderInfo
   { bi'BidderAddress :: Address
-  -- ^ Bidder's pubkey hash, which can spend this bidder deposit
+  -- ^ Bidder's address, which can spend this bidder deposit
   -- to buy the auction lot if a bid placed by bi'BidderVk wins
   -- or reclaim this bid deposit if someone else's bid wins.
   , bi'BidderVk :: ByteString
   -- ^ Bidder's verification, which can authorize bids that allow
-  -- the seller at'SellerPkh to claim this bidder deposit
+  -- the seller at'SellerAddress to claim this bidder deposit
   -- if the bid placed by bi'BidderVk won but the auction lot
   -- wasn't purchased by the deadline.
   }
-
-validBidderInfo :: BidderInfo -> Bool
-validBidderInfo BidderInfo {..} =
-  bi'BidderPkh == hashVKey bi'BidderVk
-  -- The bidder pubkey hash corresponds to the bidder verification key.
-  -- Note: this check only becomes possible on-chain in Plutus V3.
-  -- https://github.com/input-output-hk/plutus/pull/5431
 ```
 
 If a bidder places a winning bid in the auction
@@ -406,7 +426,7 @@ to consider allowing those bidders to participate.
 ### Authorization by seller
 
 In a private auction, the seller controls
-who is allowed to place bids in the auction.
+who is allowed to place bids.
 To authorize a bidder to participate in the auction,
 the seller signs a serialized tuple `(auctionId, bidderVk)`
 describing the bidder (via verification key)
@@ -445,7 +465,16 @@ In princple, the auction app could just as easily generate
 a QR code that the seller could share on Discord, Twitter,
 WhatsApp, etc.
 
-FIXME: OracleDatum
+```haskell
+type SellerOracleDatum = AuctionAuth
+
+type Signature = ByteArray
+
+data AuctionAuth = AuctionAuth
+  { auctionCs :: CurrencySymbol
+  , signatures :: [(VerificationKey, Signature)
+  }
+```
 
 ### Bid terms and authorization by bidder
 
@@ -463,9 +492,9 @@ data BidTerms = BidTerms
   -- ^ Price that the bidder bid to buy the auction lot.
   , bt'BidderSignature :: BuiltinByteString
   -- ^ Bidder's signature (via bi'BidderVk . bt'Bidder) of the
-  -- (ai'AuctionId, bt'BidPrice, bi'BidderPkh) tuple,
+  -- (ai'AuctionId, bt'BidPrice, bi'BidderAddress) tuple,
   -- authorizing a bid at that price to be placed in the auction
-  -- and bi'BidderPkh to buy the auction lot if the bid wins.
+  -- and bi'BidderAddress to buy the auction lot if the bid wins.
   , bt'SellerSignature :: BuiltinByteString
   -- ^ Seller's signature (via at'SellerVk) of the
   -- (ai'AuctionId, bi'BidderVk) tuple,
@@ -479,25 +508,25 @@ Bid terms can be verified on-chain or off-chain as follows:
 validBidTerms :: AuctionTerms -> CurrencySymbol -> BidTerms -> Bool
 validBidTerms AuctionTerms {..} auctionId BidTerms {..}
   | BidderInfo {..} <- bt'Bidder =
-  validBidderInfo bt'Bidder &&
-  -- The bidder pubkey hash corresponds to the bidder verification key.
+
+  -- The seller authorized the bidder to participate
   verifyEd25519Signature at'SellerVk
     (sellerSignatureMessage auctionId bi'BidderVk)
     bt'SellerSignature &&
-  -- The seller authorized the bidder to participate
-  verifyEd25519Signature bi'BidderVk
-    (bidderSignatureMessage auctionId bt'BidPrice bi'bidderPkh)
-    bt'BidderSignature
+
   -- The bidder authorized the bid
+  verifyEd25519Signature bi'BidderVk
+    (bidderSignatureMessage auctionId bt'BidPrice bi'bidderAddress)
+    bt'BidderSignature
 
 bidderSignatureMessage
   :: CurrencySymbol
   -> Integer
   -> PubKeyHash
   -> BuiltinByteString
-bidderSignatureMessage auctionId bidPrice bidderPkh =
+bidderSignatureMessage auctionId bidPrice bidderAddress =
   toByteString auctionId <>
-  toByteString bidderPkh <>
+  toByteString bidderAddress <>
   toByteString bidPrice
 
 sellerSignatureMessage
@@ -508,10 +537,6 @@ sellerSignatureMessage auctionId bidderVk =
   toByteString auctionId <>
   bidderVk
 ```
-
-TODO: ### Buying out the auction lot
-TODO: ### Claiming back the bidder's deposit
-
 
 ## Minting policies
 
@@ -567,7 +592,10 @@ and the token names
 `auctionTN` (auction state token),
 `auctionMetadataTN` (auction metadata token),
 and `standingBidTN` (standing bid token).
-- The auction metadata token is sent to the auction metadata validator.
+- The auction metadata token is sent to the auction metadata validator within the only output.
+- The auction info datum contains an auction ID
+that matches policy's own currency symbol.
+- The auction metadata record contains valid auction terms.
 
 ```mermaid
 flowchart LR
@@ -596,8 +624,8 @@ flowchart LR
   classDef reference stroke-dasharray: 5 5;
 ```
 
-Note that the auction minting policy doesn't validate the auction terms
-or ensure that the auction state tokens are sent
+Note that the auction minting policy doesn't
+ensure that the auction state tokens are sent
 to the appropriate auction protocol validators.
 
 ### Delegate metadata minting policy
@@ -657,11 +685,6 @@ flowchart LR
   classDef reference stroke-dasharray: 5 5;
 ```
 
-### Personal oracle minting policy
-
-Mint or burn if the seller/bidder signs, whenever desired.
-Impemented using native scripts.
-
 ## Auction state validators
 
 ### Auction escrow validator
@@ -671,7 +694,21 @@ to hold the auction lot once the auction announcement,
 until either the winning bidder buys it
 or the seller reclaims it.
 
+This validator is parametrized by three parameters:
+* the currency symbol of the auction non-fungible tokens.
+All references to "the auction state token"
+"the standing bid token",
+or "the auction metadata token" below
+imply tokens with this currency symbol.
+* the auction terms;
+* the hash of the fee escrow script;
+
 The utxo datum contains the current state of the auction.
+When the auction is announced,
+the seller should initialize the auction escrow datum
+as `AuctionAnnounced :: AuctionEscrowState`.
+
+The validator supports four redeemers:
 
 ```haskell
 data AuctionEscrowRedeemer = StartBidding
@@ -679,17 +716,6 @@ data AuctionEscrowRedeemer = StartBidding
                            | BidderBuys
                            | CleanupAuction
 ```
-
-This validator is parametrized by the auction terms
-and the currency symbol of the auction state tokens.
-All references to "the auction state token"
-"the standing bid token",
-or "the auction metadata token" below
-imply tokens with this currency symbol.
-
-When the auction is announced,
-the seller should initialize the auction escrow datum
-as `AuctionAnnounced :: AuctionEscrowState`.
 
 Under the `StartBidding` redeemer, we enforce that:
 
@@ -707,7 +733,7 @@ Its `StandingBidState` datum is `StandingBidState Nothing`.
 - The transaction validity interval starts
 at the bidding start time
 and ends before the bidding end time.
-- The transaction is signed by the seller `at'SellerPkh`.
+- The transaction is signed by the seller `at'SellerAddress`.
 - No tokens are minted or burned.
 
 ```mermaid
@@ -738,12 +764,14 @@ that will be distributed to the delegates,
 as calculated by `totalAuctionFees`.
 - The transaction validity interval
 starts at the purchase deadline time.
+- The transaction is signed by the seller `at'SellerAddress`.
 - No tokens are minted or burned.
 
 ```mermaid
 flowchart LR
   input1([Auction escrow]) -- Seller reclaims --> tx
   input2([Standing bid]) --> tx
+  input3([Bidder deposit]) --> tx
   tx --> output1([Auction escrow])
   tx --> output2([Auction lot to Seller])
   tx --> output3([Fee escrow])
@@ -777,12 +805,14 @@ are satisfied when applied to the relevant arguments.
 - The transaction validity interval
 starts at the bidding end time
 and ends before the purchase deadline time.
+- The transaction in signed by the biddeer.
 - No tokens are minted or burned.
 
 ```mermaid
 flowchart LR
   input1([Auction escrow]) -- Bidder Buys --> tx
   input2([Standing bid]) --> tx
+  input3([Bidder deposit]) --> tx
   tx --> output1([Auction escrow])
   tx --> output2([Auction lot to Buyer])
   tx --> output3([Payment to Seller])
@@ -828,8 +858,10 @@ Its `AuctionEscrowState` datum is `AuctionConcluded`.
 the auction state token,
 the standing bid token,
 and the auction metadata token.
+- No other tokens are minted or burned.
 - The transaction validity interval
 starts at the cleanup time.
+- The transaction is signed by the seller.
 
 ```mermaid
 flowchart LR
@@ -850,6 +882,8 @@ until it its spent when either
 the seller reclaims the auction lot
 or the winning bidder buys it.
 
+Parameterized with autcion terms and the auction's currency symbol.
+
 ```haskell
 data StandingBidRedeemer = MoveToHydra
                          | NewBid
@@ -860,28 +894,8 @@ Under the `MoveToHydra` redeemer, we enforce that:
 
 - There is one input from the standing bid validator,
 containing the standing bid token.
-- There is one input from the Hydra Head initial validator
-($\nu_\textrm{initial}$),
-containing some Hydra Head participation token.
-The redeemer provided to this input
-mentions the standing bid input by utxo reference.
-- There is one output sent to the Hydra Head commit validator
-($\nu_\textrm{commit}$),
-containing the Hydra Head participation token
-and the standing bid token.
 - The transaction is signed by all of the delegates `at'Delegates`.
 - No tokens are minted or burned.
-
-```mermaid
-flowchart LR
-  input1([Standing bid]) -- Move to Hydra --> tx
-  input2([Hydra Head initial]) --> tx
-  tx --> output1([Hydra Head commit])
-  tx
-
-  classDef default font-size:90%, overflow:visible;
-  classDef reference stroke-dasharray: 5 5;
-```
 
 Under the `NewBid` redeemer, we enforce that:
 
@@ -940,7 +954,9 @@ Under the `ConcludeAuction` redeemer, we enforce that:
 - There is one input from the standing bid validator,
 containing the standing bid token.
 - There is one input from the auction escrow validator,
-containing the auction state token.
+containing the auction state token being spent with the
+`BidderBuys` or `SellerReclaims` redeemer,
+which means the auction has been concluded.
 
 ```mermaid
 flowchart LR
@@ -952,8 +968,6 @@ flowchart LR
 ```
 
 ### Bidder deposit validator
-
-[TODO:] [Avoid double-satisfaction with escrow validator payouts]
 
 The purpose of the bidder deposit validator is
 to hold a bidder's ADA deposit for an auction until either:
@@ -967,6 +981,14 @@ because another bidder won the auction.
 - The bidder reclaims the deposit
 because the auction has already concluded.
 
+The validator is parameterized with four parameters:
+* the hash of the standin bid validator;
+* the hash of the auction escrow validator;
+* the currency symbol of the auction non-fungible tokens;
+* the auction terms.
+
+The validator supports five reddemers:
+
 ```haskell
 data BidderDepositRedeemer = DepositUsedByWinner
                            | DepositClaimedBySeller
@@ -977,107 +999,59 @@ data BidderDepositRedeemer = DepositUsedByWinner
 
 Under the `DepositUsedByWinner` redeemer, we enforce that:
 
-- There is one input spent from the bid deposit validator.
+- There is only one input spent from the bid deposit validator.
 Its `BidderInfo` datum defines the bidder.
-- There is one input spent from the auction escrow validator,
-containing the auction state token.
-- Either the transaction is signed by the bidder who made the deposit or
-there is one output sent to that bidder that contains the bid deposit ADA.
+- There is only one input spent from the auction escrow validator,
+containing the auction state token
+and being spent with the `BidderBuys` redeemer.
+- There is only one standing bid input,
+containing the standing bid token.
+- The bidder deposit's bidder won the auction
+(i.e. the bid is the standing bid).
 - No tokens are minted or burned.
-
-```mermaid
-flowchart LR
-  input1([Bid deposit]) -- Deposit used by winner --> tx
-  input2([Auction escrow]) --> tx
-  tx --> output1([Bid deposit to bidder])
-
-  classDef default font-size:90%, overflow:visible;
-  classDef reference stroke-dasharray: 5 5;
-```
 
 Under the `DepositClaimedBySeller` redeemer, we enforce that:
 
 - There is one input spent from the bid deposit validator.
-Its `BidderInfo` datum defines the bidder who made the deposit.
 - There is one input spent from the auction escrow validator,
 containing the auction state token.
+- The auction escrow input is being spent with
+the `SellerReclaims` redeemer.
 - There is one input spent from the standing bid validator,
 containing the standing bid token.
-Its `StandingBidState` datum defines the bidder who placed the bid,
-if any.
-- Either the transaction is signed by the seller or
-there is one output sent to the seller that contains the bid deposit ADA.
-- The bidder verification key matches between
-the bidder deposit and the standing bid.
+- The bidder deposit's bidder won the auction.
 - The transaction validity interval starts at the purchase deadline.
 - No tokens are minted or burned.
-
-```mermaid
-flowchart LR
-  input1([Bid deposit]) -- Deposit Claimed by Seller --> tx
-  input2([Auction escrow]) --> tx
-  input3([Standing bid]) --> tx
-  tx --> output1([Bid deposit to seller])
-  tx
-
-  classDef default font-size:90%, overflow:visible;
-  classDef reference stroke-dasharray: 5 5;
-```
 
 Under the `DepositReclaimedByLoser` redeemer:
 
 - There is one input spent from the bid deposit validator.
-Its `BidderInfo` datum defines the bidder who made the deposit.
 - There is one reference input from the standing bid validator,
 containing the standing bid token.
-Its `StandingBidState` datum defines the bidder who placed the bid,
-if any.
-- Either the transaction is signed by the bidder who made the deposit or there is one output sent to that bidder that contains the bid deposit ADA.
-- The bidder verification key _doesn't match_ between
+- The bidder deposit's bidder lost the auction
+i.e. the bidder verification key _doesn't match_ between
 the bidder deposit and the standing bid.
 - The transaction validity interval starts at the bidding end time.
+- The payment part of the bidder address should be a pubkey hash.
+- The transaction is signed by the bidder.
 - No tokens are minted or burned.
-
-```mermaid
-flowchart LR
-  input1([Bid deposit]) -- Deposit Reclaimed by Loser --> tx
-  input2([Standing bid]):::reference --> tx
-  tx --> output1([Bid deposit to bidder])
-  tx
-
-  classDef default font-size:90%, overflow:visible;
-  classDef reference stroke-dasharray: 5 5;
-```
 
 Under the `DepositReclaimedAuctionConcluded` redeemer, we enforce that:
 
 - There is one input spent from the bid deposit validator.
-Its `BidderInfo` datum defines the bidder who made the deposit.
-- There is one reference input from the standing bid validator,
-containing both the auction state and standing bid tokens.
-Its `AuctionEscrowState` datum is `AuctionConcluded`.
-- There is one output sent back to the bidder who made the deposit,
-containing the bid deposit ADA.
+- The auction escrow reference input should contain the auction
+escrow token and standing bid token.
+- Its `AuctionEscrowState` datum is `AuctionConcluded`.
+- The payment part of the bidder address should be a pubkey hash.
+- The transaction is signed by the bidder.
 - No tokens are minted or burned.
-
-```mermaid
-flowchart LR
-  input1([Bid deposit]) -- Deposit Reclaimed Auction Concluded --> tx
-  input2([Auction escrow]):::reference --> tx
-  tx --> output1([Bid deposit to bidder])
-  tx
-
-  classDef default font-size:90%, overflow:visible;
-  classDef reference stroke-dasharray: 5 5;
-```
 
 Under the `DepositCleanup` redeemer, we enforce that:
 
 - There is one input spent from the bid deposit validator.
-Its `BidderInfo` datum defines the bidder who made the deposit.
-- Either the transaction is signed by the bidder who made the deposit or
-there is one output sent to that bidder that contains the bid deposit ADA.
 - The transaction validity time starts after the cleanup time.
+- The payment part of the bidder address should be a pubkey hash.
+- The transaction is signed by the bidder.
 - No tokens are minted or burned.
 
 ```mermaid
@@ -1094,6 +1068,9 @@ flowchart LR
 
 The purpose of this validator is to distribute the total auction fees
 evenly among the delegates, after deducting the transaction fee.
+
+The validator is parameterized by the auction currency symbol
+and the action terms.
 
 Under the `DistributeFees` redeemer, we enforce that:
 
@@ -1112,8 +1089,6 @@ flowchart LR
   classDef default font-size:90%, overflow:visible;
   classDef reference stroke-dasharray: 5 5;
 ```
-
-The fee distribution to delegates must satisfy the following conditions:
 
 To keep things simple in this design, we require
 the number of delegates in an auction to be small enough
@@ -1199,6 +1174,51 @@ flowchart LR
   classDef reference stroke-dasharray: 5 5;
 ```
 
-### Personal oracle validator
+### Personal oracle minting policy and validator
 
-TLDR utxos under this validator can be spent by seller, whenever desired.
+Personal oracles can be used by sellers and buyers
+to publish various types of information on-chain,
+like bidders authorizations
+and so on.
+
+The oracle minting policy is a native script
+based on a PKH that owns the oracle.
+Tokens under that policy are fungible
+thus allowing multiple outputs to exist.
+To tell apart different types of data
+token names are used as discriminators.
+
+The oracle validator is also a native script
+based on the same PKH that the policy.
+Outputs under this validator can be desptoyed by the oracle's owner, whenever desired.
+
+Currently the following token names and datatypes
+are used in the protocol.
+
+```haskell
+
+-- Publish authorized bidders, token name: `AUCTION_AUTH`
+newtype AuctionAuth = AuctionAuth
+  { auctionCs :: CurrencySymbol
+  , signatures :: Array (Tuple VerificationKey ByteArray)
+  }
+
+-- Announce the party's participation in an auction,
+-- used for more efficient queries, token name: `AUCTION_ACTOR`
+data AuctionActor = AuctionActor
+  { auctionInfo :: AuctionInfo
+  , role :: ActorRole
+  }
+
+data ActorRole = Seller | Bidder
+
+-- To guarantee that bidders are still able to reclaim their deposits
+-- during the cleanup period after all auction's tokens are burned,
+-- we store the bidder deposit validator address
+-- which is a part of 'AuctionInfo' in a bidder's oracle
+-- along with tokens named `BIDDER_DEPOSIT`
+data BidderDeposit = BidderDeposit
+  { bd'Address :: Address
+  }
+
+```
