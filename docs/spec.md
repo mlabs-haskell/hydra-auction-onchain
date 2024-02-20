@@ -4,29 +4,32 @@ The hydra auction blockchain protocol uses:
 * three minting policies;
 * three non-fungible tokens;
 * two fungible tokens;
-* seven validator scripts;
+* seven validator scripts.
 
 The __auction minting policy__ atomically mints (and burns)
 three non-fungible tokens.
 One of then, __auction metadata token__,
-is used to identify non-changable information about the auction;
-other two are known as auction __state tokens__ and are used to identify two auction's state outputs:
-* __auction escrow utxo__ that holds auction lot in its value and auction state in its datum;
-* __standing bid utxo__ that holds the (optionally misssing)
-current standing bit.
+is used to identify non-changeable information about the auction.
+The other two are known as auction __state tokens__
+and are used to identify two utxos:
+* __auction escrow utxo__ that holds
+the auction lot in its value
+and auction state in its datum;
+* __standing bid utxo__ that holds
+the initially empty current standing bit.
 
 The __delegate metadata minting policy__ mints
-delegate metadata fungible token,
-which is held under the delegate metadata validator
+delegate metadata fungible tokens
+which are held under the delegate metadata validator
 and used to verify available delegate groups
-that provides hydra heads.
+that provide hydra heads.
 
 The __personal oracle minting policy__ mints
-personal oracle fungible token,
-which is held under the personal oracle validator
-by sellers and bidders.
+fungible tokens which are held under the personal oracle validator
+by sellers and bidders
+tracking various information parties might publish on-chain.
 
-The auction state is controlled by five validators:
+The auction is controlled by five validators:
 * auction escrow;
 * auction metadata;
 * bidder deposit;
@@ -95,8 +98,7 @@ are all unparametrized.
 The personal oracle validator
 and personal oracle minting policy
 are both parametrized by the user's pubkey hash
-and implemented as a native pubkey hash script
-and a native minting policy.
+and implemented as native scripts.
 
 The auction minting policy is parametrized on
 the auction metadata validator
@@ -104,7 +106,8 @@ and on the utxo reference of an input
 to the auction minting transaction.
 
 The other four validators are all parameterized
-on the auction terms and the auction currency symbol.
+on the auction terms and the auction currency symbol
+(and some additionally by other scripts' hashes).
 
 ## Announcements, discoverability, and state
 
@@ -112,16 +115,16 @@ All auctions and delegate groups are announced on the L1 blockchain ledger
 with all relevant information about them declared
 in metadata records held under the non-parametric metadata validators.
 This allows any potential participant in the auction protocol
-to discover all active auctions and delegate groups by querying the blockchain.
+to discover all active auctions and delegate groups just by querying the blockchain.
 
 Personal oracles are used to execute some queries more efficiently:
 * list auctions run by a particular seller;
-* list auctions a bidder is takinf participatt;
+* list auctions where a bidder takes part.
 
-Also oracles are used to extend longevity of some data
+Also, oracles are used to extend the longevity of some data
 beyond the point when an auction gets cleaned up on L1.
 Particularly, bidder oracles are used
-to hold informarion needed to recover a bidder deposit.
+to hold information needed to recover a bidder deposit.
 
 ### Delegate group announcement
 
@@ -166,7 +169,7 @@ Rather, it exists purely as a mechanism for potential participants
 to discover the delegate group via blockchain queries.
 
 To discover all currently existing delegate groups,
-query the utxos at delegate metadata validator address,
+query the utxos at the delegate metadata validator address,
 and then filter out utxos that don't contain
 the delegate metadata token.
 
@@ -176,7 +179,7 @@ A seller's auction announcement declares the auction metadata
 and initializes the auction by minting
 its metadata token and its state tokens.
 Metadata token goes to the metadata utxo;
-two state tokens go to into the auction escrow
+both state tokens go to the auction escrow
 along with the auction lot.
 
 ```mermaid
@@ -199,14 +202,14 @@ in the announcement transaction.
 
 The auction metadata utxo datum contains
 the auction terms,
-the auction state token currency symbol,
+the currency symbol of the auction policy,
 and all of the auction's validator addresses.
 
 ```haskell
 data AuctionInfo = AuctionInfo
   { ai'AuctionId     :: CurrencySymbol
   -- ^ The auction is uniquely identified by
-  -- the currency symbol of its state tokens.
+  -- the currency symbol of the auction MP.
   , ai'AuctionTerms  :: AuctionTerms
   -- ^ The auction terms fully characterize the
   -- behaviour of the auction.
@@ -235,7 +238,7 @@ data AuctionTerms = AuctionTerms
   -- which will receive the proceeds of the auction (minus fees)
   -- if the auction lot is purchased,
   -- or reclaim the auction lot if it isn't.
-  , at'SellerVk  :: BuiltinByteString
+  , at'SellerVk :: BuiltinByteString
   -- ^ Seller's verification key acts as a gatekeeper
   -- controlling which bidders receive authorization to
   -- participate in the auction.
@@ -283,10 +286,10 @@ validAuctionTerms auTerms@AuctionTerms {..} =
   -- All amounts in the auction lot must be positive.
   valuePositive at'AuctionLot &&
 
-  -- The payment part of the seller address is a PKH.
+  -- The payment part of the seller's address is a PKH.
   isJust $ addrPaymentKeyHash at'SellerAddress
 
-  -- Bidding ends after it the bidding start time.
+  -- Bidding ends after the bidding starts.
   at'BiddingStart < at'BiddingEnd &&
 
   -- The purchase deadline occurs after bidding ends.
@@ -324,9 +327,9 @@ to one of the delegate groups that the seller discovers
 by querying the announced delegate groups.
 
 We do not require `at'SellerAddress` matches `at'SellerVk`.
-In some sense they represent two different roles
-so seller can use the same of different credentials
-at their own discretion:
+In some sense, these two represent different roles.
+The seller can use the same or different credentials
+at their discretion:
 * `at'SellerAddress` represents a beneficiary
 who receives the proceeds of an auction
 and manages a seller's oracle.
@@ -336,7 +339,7 @@ checking bidders' authorization.
 ### Auction state and utxo datums
 
 For any auctions of interest,
-one can discover their current L1 state by
+anyone can discover their current L1 state by
 querying the utxos at their corresponding validator addresses
 that are listed in the auction metadata.
 
@@ -344,33 +347,32 @@ The state of the auction protocol is contained in the
 auction escrow, standing bid, and bidder deposits' utxo datums:
 
 ```haskell
--- 1. Auction escrow - holds the state in datum (and lot in the value).
+-- 1. Auction escrow - holds the state in datum (and the lot in the value).
 type AuctionEscrowDatum = AuctionEscrowState
 
 data AuctionEscrowState = AuctionAnnounced
                         | BiddingStarted
                         | AuctionConcluded
 
--- 2. Standing bid - represented by optionally missing `BidTerms`.
+-- 2. Standing bid - represented initially empty `BidTerms`.
 type StandingBidDatum = StandingBidState
 
 newtype StandingBidState = StandingBidState
   { standingBidState :: Maybe BidTerms }
 
--- 3. Bidder deposit outputs lock deposits along with info about the bidder that made it.
-
+-- 3. Bidder deposit outputs lock deposits
+-- along with info about the bidder that made it.
 type BidderDepositDatum = BidderInfo
 
 -- 3. Doesn't carry any information.
 type FeeEscrowDatum = ()
-
 ```
 
 The auction escrow and standing bid state can change
 over the lifecycle of the auction
 and they are uniquely identified
 by the non-fungible auction state tokens that their utxos hold
-(policy id `ai'AuctionId` token names are `AUCTION` and `STANDING_BID`).
+(policy id `ai'AuctionId`, token names `AUCTION` and `STANDING_BID`).
 All other utxos with no state tokens under
 the auction escrow and standing bid addresses
 must be ignored as illegitimate.
@@ -379,8 +381,8 @@ The location of the standing bid token determines
 if and where bids can be placed in the auction:
 
 - If it's at the auction escrow address on L1 (the initial disposition),
-then bids cannot be placed.
-- If it's at the the standing bid address on L1,
+then bids cannot be placed yet.
+- If it's at the standing bid address on L1,
 then bids can be placed on L1.
 - Otherwise, it's in a hydra head on L1
 and at the standing bid address on L2,
@@ -389,11 +391,9 @@ so bids should be placed on L2 via requests sent to the delegates.
 Bidder deposits are not uniquely identified by any non-fungible tokens,
 and bidder information is fixed when its deposit utxo is created.
 
-TODO: FeeEscrow
-
 ### Bidder deposits
 
-To indicate an interest to participate in an auction,
+To indicate an interest in participating in an auction,
 each bidder should deposit some ADA
 under the auction's bidder deposit validator,
 identifying the bidder in the bid deposit's utxo datum.
@@ -401,9 +401,9 @@ identifying the bidder in the bid deposit's utxo datum.
 ```haskell
 data BidderInfo = BidderInfo
   { bi'BidderAddress :: Address
-  -- ^ Bidder's address, which can spend this bidder deposit
-  -- to buy the auction lot if a bid placed by bi'BidderVk wins
-  -- or reclaim this bid deposit if someone else's bid wins.
+  -- ^ Bidder's address, which can spend this bidder's deposit
+  -- and buy the auction lot if a bid placed by bi'BidderVk wins
+  -- or reclaim this deposit otherwise.
   , bi'BidderVk :: ByteString
   -- ^ Bidder's verification, which can authorize bids that allow
   -- the seller at'SellerAddress to claim this bidder deposit
@@ -412,16 +412,23 @@ data BidderInfo = BidderInfo
   }
 ```
 
-If a bidder places a winning bid in the auction
-but does not purchase the auction lot by the deadline,
-then the winning bidder's deposit is forfeited to the seller.
-This doesn't guarantee that the winning bid will be honored in the auction, but the bid deposit can compensate the seller
-for the waste of time caused by the bidder's unserious bid.
-
 In the auction terms, the seller defines
 the minimum ADA amount (`at'MinDepositAmount`)
 that he expects to see in bidder deposits
 to consider allowing those bidders to participate.
+
+If a bidder places a winning bid in the auction
+but does not purchase the auction lot by the deadline,
+then the winning bidder's deposit is forfeited to the seller.
+This doesn't guarantee that the winning bid will be honored in the auction,
+but the bid deposit can compensate the seller
+for the waste of time caused by the bidder's unserious bid.
+
+Again, a bidder can use `bi'BidderAddress` and `bi'BidderVk`
+based on the same key or not. They represent two different roles respectively:
+* `bi'BidderAddress` acts as buyer/guarantor
+who is expected to buy the lot in the case of a win;
+* `bi'BidderVk` authorizes the bids.
 
 ### Authorization by seller
 
@@ -430,8 +437,8 @@ who is allowed to place bids.
 To authorize a bidder to participate in the auction,
 the seller signs a serialized tuple `(auctionId, bidderVk)`
 describing the bidder (via verification key)
-and the auction (via currency symbol) that the bidder can
-participate in.
+and the auction (via the currency symbol) 
+that the bidder can participate in.
 This signature can be verified
 via the seller's verification key (`at'SellerVk`),
 which is included in the auction terms.
@@ -444,12 +451,12 @@ but has full discretion to grant or withhold authorization
 to anyone for any reason.
 
 To inform bidders that they have authorization,
-the seller can publish bidder-auction authorization signatures
+the seller publishes bidder-auction authorization signatures
 via a personal oracle.
 To publish a new list of bidder-auction authorization signatures
 `[(signature, auctionId, bidderVk)]`,
 the seller mints a new personal oracle token
-and places it under his personal oracle validator
+and place it under his personal oracle validator
 into a utxo containing the list in the datum.
 The seller can do this as many times as needed,
 publishing different lists of signatures each time.
@@ -457,11 +464,12 @@ publishing different lists of signatures each time.
 To discover the bidder-auction authorizations from the seller,
 query the seller's personal oracle address
 and filter out utxos that don't contain
-the seller's personal oracle token.
+the seller's personal oracle token
+and/or don't relate to the auction based on `auctionId`
 
 Overall, this is a completely optional mechanism for the seller to
 communicate authorization to bidders for auction participation.
-In princple, the auction app could just as easily generate
+In principle, the auction app could just as easily generate
 a QR code that the seller could share on Discord, Twitter,
 WhatsApp, etc.
 
