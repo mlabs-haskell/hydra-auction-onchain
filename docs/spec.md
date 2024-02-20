@@ -1,40 +1,22 @@
 # Hydra auction blockchain protocol
 
-The hydra auction blockchain protocol uses:
-* three minting policies;
-* three non-fungible tokens;
-* two fungible tokens;
-* seven validator scripts.
+The hydra auction blockchain protocol allows
+to run closed auctions on both L1 and L2 Hydra Heads.
 
-The __auction minting policy__ atomically mints (and burns)
-three non-fungible tokens.
-One of then, __auction metadata token__,
-is used to identify non-changeable information about the auction.
-The other two are known as auction __state tokens__
-and are used to identify two utxos:
-* __auction escrow utxo__ that holds
-the auction lot in its value
-and auction state in its datum;
-* __standing bid utxo__ that holds
-the initially empty current standing bit.
+It allows delegates to anounce themselves on-chain
+offering sellers to use Hydra Heads they manage;
+selers to announce an auction;
+and bidders to enter auctions they are interested in
+and sellers to decide who is allowed.
+Once the bidding that can happen on L1 or L2 is finished
+the winner can buy the lot or seller can reclaim it back.
+Finally auctions get cleaned up to get back ADA locked
+and free the chain from unneeded assets.
 
-The __delegate metadata minting policy__ mints
-delegate metadata fungible tokens
-which are held under the delegate metadata validator
-and used to verify available delegate groups
-that provide hydra heads.
-
-The __personal oracle minting policy__ mints
-fungible tokens which are held under the personal oracle validator
-by sellers and bidders
-tracking various information parties might publish on-chain.
-
-The auction is controlled by five validators:
-* auction escrow;
-* auction metadata;
-* bidder deposit;
-* fee escrow;
-* standing bid.
+The protocol uses the following components shown on the diagram
+and described in the following section:
+* Three minting policies.
+* Seven validator scripts.
 
 ```mermaid
 flowchart
@@ -90,24 +72,50 @@ flowchart
   style RIGHT fill:#0000,stroke-width:0px;
 ```
 
-The auction metadata validator,
-delegate metadata validator,
-and delegate metadata minting policy
-are all unparametrized.
+The __auction metadata validator__,
+and __delegate metadata validator__,
+are unparametrized so
+any interested party can use them
+to discover delegates and auctions.
+
+The __delegate metadata minting policy__ mints
+delegate metadata fungible token,
+which is held under the delegate metadata validator
+and used to verify available delegate groups
+that provides hydra heads.
 
 The personal oracle validator
 and personal oracle minting policy
-are both parametrized by the user's pubkey hash
-and implemented as native scripts.
+are both parametrized by the owners's pubkey hash.
+Both sellers and bidders can use oracles.
 
-The auction minting policy is parametrized on
-the auction metadata validator
-and on the utxo reference of an input
-to the auction minting transaction.
+The auction minting policy is a one-shot policy
+parametrized on the auction metadata validator
+and on the utxo reference of an input (utxo nonce)
+to the auction announcing transaction.
+The policy atomically mints (and burns)
+three non-fungible tokens.
+One of then, __auction metadata token__,
+is used to identify non-changable information about the auction;
+other two are so called auction state tokens
+and are used to identify two auction's state outputs:
+* __auction escrow utxo__ that holds auction lot in its value
+and auction state in its datum;
+* __standing bid utxo__ that holds the (intially missing)
+current standing bit.
 
-The other four validators are all parameterized
+The auction state is controlled by five validators:
+* auction escrow;
+* auction metadata;
+* bidder deposit;
+* standing bid.
+* fee escrow;
+
+The five validators are all parameterized
 on the auction terms and the auction currency symbol
 (and some additionally by other scripts' hashes).
+That way the protocol uses a separate set of addresses
+for every auction.
 
 ## Announcements, discoverability, and state
 
@@ -437,7 +445,7 @@ who is allowed to place bids.
 To authorize a bidder to participate in the auction,
 the seller signs a serialized tuple `(auctionId, bidderVk)`
 describing the bidder (via verification key)
-and the auction (via the currency symbol) 
+and the auction (via the currency symbol)
 that the bidder can participate in.
 This signature can be verified
 via the seller's verification key (`at'SellerVk`),
@@ -844,7 +852,7 @@ validBuyer auTerms@AuctionTerms{..} auctionId StandingBidState{..} buyer
   | Just bidTerms@BidTerms{..} <- standingBidState
   , BidderInfo {..} <- bt'Bidder =
       buyer == bi'BidderPkh &&
-      validBidTerms auTerms auctionId bidTerms
+         auTerms auctionId bidTerms
   | otherwise = False
 
 validPaymentToSeller
