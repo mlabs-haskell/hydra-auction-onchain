@@ -574,19 +574,19 @@ The token names of this minting policy are as follows:
 
 ```haskell
 -- Auction metadata token, identifying the true auction metadata.
--- To be used with auction metadata validator.
+-- To be used with the auction metadata validator.
 auctionMetadataTN :: TokenName
 auctionMetadataTN = "AUCTION_METADATA"
 
 -- Two auction state tokens.
 
 -- Auction state token, identifying the true auction escrow.
--- To be used with auction escrow validator.
+-- To be used with the auction escrow validator.
 auctionTN :: TokenName
 auctionTN = "AUCTION"
 
 -- Standing bid token, identifying the true standing bid.
--- To be used wit standing bid validator.
+-- To be used with the standing bid validator.
 standingBidTN :: TokenName
 standingBidTN = "STANDING_BID"
 ```
@@ -602,7 +602,7 @@ and the token names
 and `standingBidTN` (standing bid token).
 - The auction metadata token is sent to the auction metadata validator within the only output.
 - The auction info datum contains an auction ID
-that matches policy's own currency symbol.
+that matches the policy's own currency symbol.
 - The auction metadata record contains valid auction terms.
 
 ```mermaid
@@ -618,7 +618,7 @@ flowchart LR
 Under the `BurnAuction` redeemer, we enforce that:
 
 - There are three tokens burned.
-They have the minting policy's own currency symbol
+They have the minting the policy's own currency symbol
 and the token names
 `auctionTN` (auction state token),
 `auctionMetadataTN` (auction metadata token),
@@ -662,7 +662,7 @@ and the token name `delegateMetadataTN` (delegate metadata token).
 - There is one output sent to the delegate metadata validator,
 containing the minted token.
 Its `DelegateInfo` datum satisfies the `validDelegateInfo` conditions.
-- The transaction is signed  all of the pubkey hashes
+- The transaction is signed  by all of the pubkey hashes
 indicated in the `di'Delegates` field of the `DelegateInfo` output datum.
 
 ```mermaid
@@ -698,18 +698,19 @@ flowchart LR
 ### Auction escrow validator
 
 The purpose of the auction escrow validator is
-to hold the auction lot once the auction announcement,
+to hold the auction lot once the auction gets announced,
 until either the winning bidder buys it
-or the seller reclaims it.
+or the seller reclaims it back.
 
 This validator is parametrized by three parameters:
-* the currency symbol of the auction non-fungible tokens.
+* The currency symbol of auction policy under which
+the auction non-fungible tokens are minted.
 All references to "the auction state token"
 "the standing bid token",
 or "the auction metadata token" below
 imply tokens with this currency symbol.
-* the auction terms;
-* the hash of the fee escrow script;
+* The auction terms;
+* The hash of the fee escrow script;
 
 The utxo datum contains the current state of the auction.
 When the auction is announced,
@@ -727,15 +728,15 @@ data AuctionEscrowRedeemer = StartBidding
 
 Under the `StartBidding` redeemer, we enforce that:
 
-- There is one input spent from the auction escrow validator,
+- There is exactly one input spent from the auction escrow validator,
 containing the auction lot,
 the auction state token,
 and the standing bid token.
 Its `AuctionEscrowState` datum is `AuctionAnnounced`.
-- There is one output sent to the auction escrow validator,
+- There is exactly one output sent back to the auction escrow validator,
 containing the auction lot and the auction state token.
 Its `AuctionEscrowState` datum is `BiddingStarted`.
-- There is one output sent to the standing bid validator,
+- There is exactly one output sent to the standing bid validator,
 containing the standing bid token.
 Its `StandingBidState` datum is `StandingBidState Nothing`.
 - The transaction validity interval starts
@@ -756,15 +757,15 @@ flowchart LR
 
 Under the `SellerReclaims` redeemer, we enforce that:
 
-- There is one input spent from the auction escrow validator,
+- There is exactly one input spent from the auction escrow validator,
 containing the auction lot and the auction state token.
 Its `AuctionEscrowState` datum is `BiddingStarted`.
-- There is one input spent from the standing bid validator,
+- There is exactly one input spent from the standing bid validator,
 containing the standing bid token.
-- There is one output sent to the auction escrow validator,
+- There is exactly one output sent back to the auction escrow validator,
 containing the auction state and standing bid tokens.
 Its `AuctionEscrowState` datum is `AuctionConcluded`.
-- There is one output sent to the seller,
+- There is exactly one output sent to the seller (beneficiary),
 containing the auction lot.
 - There is one output sent to the fee escrow validator,
 containing the total auction fees
@@ -790,21 +791,21 @@ flowchart LR
 
 Under the `BidderBuys` redeemer, we enforce that:
 
-- There is one input spent from the auction escrow validator,
+- There is exactly one input spent from the auction escrow validator,
 containing the auction lot and the auction state token.
 Its `AuctionEscrowState` datum is `BiddingStarted`.
-- There is one input spent from the standing bid validator,
+- There is exactly one input spent from the standing bid validator,
 containing the standing bid token.
 Its `StandingBidState` datum contains a bid with `BidTerms`
 defining the bidder and the bid price.
-- There is one output sent to the auction escrow validator,
+- There is exactly one output sent to the auction escrow validator,
 containing the auction state and standing bid tokens.
 Its `AuctionEscrowState` datum is `AuctionConcluded`.
-- There is one output sent to a buyer,
+- There is exactly one output sent to a buyer,
 containing the auction lot.
-- There is one output sent to the seller,
+- There is exactly one output sent to the seller,
 containing an ADA payment to the seller.
-- There is one output sent to the fee escrow validator,
+- There is exactly one output sent to the fee escrow validator,
 containing the total auction fees
 that will be distributed to the delegates,
 as calculated by `totalAuctionFees`.
@@ -813,7 +814,7 @@ are satisfied when applied to the relevant arguments.
 - The transaction validity interval
 starts at the bidding end time
 and ends before the purchase deadline time.
-- The transaction in signed by the biddeer.
+- The transaction is signed by the bidder.
 - No tokens are minted or burned.
 
 ```mermaid
@@ -859,7 +860,7 @@ validPaymentToSeller auTerms StandingBidState {..} payment
 
 Under the `CleanupAuction` redeemer, we enforce that:
 
-- There is one input spent from the auction escrow validator,
+- There is exactly one input spent from the auction escrow validator,
 containing the auction state and standing bid tokens.
 Its `AuctionEscrowState` datum is `AuctionConcluded`.
 - There are three tokens burned:
@@ -886,11 +887,12 @@ The purpose of the standing bid validator is to
 manage the state transitions of the standing bid
 and to continuously maintain control over
 the standing bid token
-until it its spent when either
+until it is spent when either
 the seller reclaims the auction lot
 or the winning bidder buys it.
 
-Parameterized with autcion terms and the auction's currency symbol.
+The validator is parameterized with auction terms
+and the auction's currency symbol.
 
 ```haskell
 data StandingBidRedeemer = MoveToHydra
@@ -900,17 +902,17 @@ data StandingBidRedeemer = MoveToHydra
 
 Under the `MoveToHydra` redeemer, we enforce that:
 
-- There is one input from the standing bid validator,
+- There is exactly one input from the standing bid validator,
 containing the standing bid token.
 - The transaction is signed by all of the delegates `at'Delegates`.
 - No tokens are minted or burned.
 
 Under the `NewBid` redeemer, we enforce that:
 
-- There is one input from the standing bid validator,
+- There is exactly one input from the standing bid validator,
 containing the standing bid token.
 Its `StandingBidState` datum is the old standing bid state.
-- There is one output to the standing bid validator,
+- There is exactly one output to the standing bid validator,
 containing the standing bid token.
 Its `StandingBidState` datum is the new standing bid state.
 - The conditions in `validNewBid` are satisfied
@@ -959,9 +961,9 @@ validBidIncrement AuctionTerms {..} old new =
 
 Under the `ConcludeAuction` redeemer, we enforce that:
 
-- There is one input from the standing bid validator,
+- There is exactly one input from the standing bid validator,
 containing the standing bid token.
-- There is one input from the auction escrow validator,
+- There is exactly one input from the auction escrow validator,
 containing the auction state token being spent with the
 `BidderBuys` or `SellerReclaims` redeemer,
 which means the auction has been concluded.
@@ -990,12 +992,12 @@ because another bidder won the auction.
 because the auction has already concluded.
 
 The validator is parameterized with four parameters:
-* the hash of the standin bid validator;
-* the hash of the auction escrow validator;
-* the currency symbol of the auction non-fungible tokens;
-* the auction terms.
+* The hash of the standing bid validator;
+* The hash of the auction escrow validator;
+* The currency symbol of the auction non-fungible tokens;
+* The auction terms.
 
-The validator supports five reddemers:
+The validator supports five redeemers:
 
 ```haskell
 data BidderDepositRedeemer = DepositUsedByWinner
@@ -1007,12 +1009,12 @@ data BidderDepositRedeemer = DepositUsedByWinner
 
 Under the `DepositUsedByWinner` redeemer, we enforce that:
 
-- There is only one input spent from the bid deposit validator.
+- There is exactly one input spent from the bid deposit validator.
 Its `BidderInfo` datum defines the bidder.
-- There is only one input spent from the auction escrow validator,
+- There is exactly one input spent from the auction escrow validator,
 containing the auction state token
 and being spent with the `BidderBuys` redeemer.
-- There is only one standing bid input,
+- There is exactly only one standing bid input,
 containing the standing bid token.
 - The bidder deposit's bidder won the auction
 (i.e. the bid is the standing bid).
@@ -1020,12 +1022,12 @@ containing the standing bid token.
 
 Under the `DepositClaimedBySeller` redeemer, we enforce that:
 
-- There is one input spent from the bid deposit validator.
-- There is one input spent from the auction escrow validator,
+- There is exactly one input spent from the bid deposit validator.
+- There is exactly one input spent from the auction escrow validator,
 containing the auction state token.
 - The auction escrow input is being spent with
 the `SellerReclaims` redeemer.
-- There is one input spent from the standing bid validator,
+- There is exactly one input spent from the standing bid validator,
 containing the standing bid token.
 - The bidder deposit's bidder won the auction.
 - The transaction validity interval starts at the purchase deadline.
@@ -1033,8 +1035,8 @@ containing the standing bid token.
 
 Under the `DepositReclaimedByLoser` redeemer:
 
-- There is one input spent from the bid deposit validator.
-- There is one reference input from the standing bid validator,
+- There is exactly one input spent from the bid deposit validator.
+- There is exactly one reference input from the standing bid validator,
 containing the standing bid token.
 - The bidder deposit's bidder lost the auction
 i.e. the bidder verification key _doesn't match_ between
@@ -1082,7 +1084,7 @@ and the action terms.
 
 Under the `DistributeFees` redeemer, we enforce that:
 
-- There is one input spent from the fee escrow validator.
+- There is exactly one input spent from the fee escrow validator.
 - There is at least one output per delegate such that
 the ada contained in that output is at least `at'AuctionFeePerDelegate`
 - No tokens are minted or burned.
@@ -1099,7 +1101,7 @@ flowchart LR
 ```
 
 To keep things simple in this design, we require
-the number of delegates in an auction to be small enough
+the number of delegates in an auction be small enough
 that distributing their respective portions of the auction fee
 can be done in a single transaction.
 Later on, this can be generalized in a straightforward way
@@ -1139,9 +1141,9 @@ flowchart LR
 
 The purpose of this validator is to ensure that
 the delegate metadata continuously stays under its control
-until it is burned (with unanimous consent of the delegates),
+until it is burned (with the unanimous consent of the delegates),
 and that the delegate metadata is only modified
-with unanimous consent of the delegates.
+with the unanimous consent of the delegates.
 
 ```haskell
 data DelegateMetadataRedeemer = ModifyDelegateMetadata
@@ -1198,7 +1200,8 @@ token names are used as discriminators.
 
 The oracle validator is also a native script
 based on the same PKH that the policy.
-Outputs under this validator can be desptoyed by the oracle's owner, whenever desired.
+Outputs under this validator can be destroyed
+by the oracle's owner, whenever desired.
 
 Currently the following token names and datatypes
 are used in the protocol.
@@ -1221,12 +1224,11 @@ data AuctionActor = AuctionActor
 data ActorRole = Seller | Bidder
 
 -- To guarantee that bidders are still able to reclaim their deposits
--- during the cleanup period after all auction's tokens are burned,
+-- during the cleanup period after all auction tokens are burned
 -- we store the bidder deposit validator address
 -- which is a part of 'AuctionInfo' in a bidder's oracle
 -- along with tokens named `BIDDER_DEPOSIT`
 data BidderDeposit = BidderDeposit
   { bd'Address :: Address
   }
-
 ```
