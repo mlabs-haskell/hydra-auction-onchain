@@ -1,16 +1,16 @@
 # Hydra auction blockchain protocol
 
-The hydra auction blockchain protocol allows
+The Hydra auction blockchain protocol allows
 to run closed auctions on both L1 and L2 Hydra Heads.
 
-It allows delegates to anounce themselves on-chain
+It allows delegates to announce themselves on-chain
 offering sellers to use Hydra Heads they manage;
-selers to announce an auction;
+sellers to announce an auction;
 and bidders to enter auctions they are interested in
 and sellers to decide who is allowed.
-Once the bidding that can happen on L1 or L2 is finished
-the winner can buy the lot or seller can reclaim it back.
-Finally auctions get cleaned up to get back ADA locked
+Once the bidding on L1 or L2 is finished
+the winner can buy the lot or the seller can reclaim it.
+Finally, auctions get cleaned up to get back ADA locked
 and free the chain from unneeded assets.
 
 The protocol uses the following components shown on the diagram
@@ -92,16 +92,16 @@ Both sellers and bidders can use oracles.
 The auction minting policy is a one-shot policy
 parametrized on the auction metadata validator
 and on the utxo reference of an input (utxo nonce)
-to the auction announcing transaction.
+to the auction announcing the transaction.
 The policy atomically mints (and burns)
 three non-fungible tokens.
 One of then, __auction metadata token__,
-is used to identify non-changable information about the auction;
-other two are so called auction state tokens
+is used to identify non-changeable information about the auction;
+The other two are so-called auction state tokens
 and are used to identify two auction's state outputs:
 * __auction escrow utxo__ that holds auction lot in its value
 and auction state in its datum;
-* __standing bid utxo__ that holds the (intially missing)
+* __standing bid utxo__ that holds the (initially missing)
 current standing bit.
 
 The auction state is controlled by five validators:
