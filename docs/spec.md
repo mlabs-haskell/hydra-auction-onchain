@@ -4,9 +4,9 @@ The Hydra auction blockchain protocol allows
 to run closed auctions on both L1 and L2 Hydra Heads.
 
 It allows delegates to announce themselves on-chain
-offering sellers to use Hydra Heads they manage;
-sellers to announce an auction;
-and bidders to enter auctions they are interested in
+offering sellers to use Hydra Heads they manage,
+sellers to announce an auction,
+bidders to enter auctions they are interested in
 and sellers to decide who is allowed.
 Once the bidding on L1 or L2 is finished
 the winner can buy the lot or the seller can reclaim it.
@@ -95,7 +95,7 @@ and on the utxo reference of an input (utxo nonce)
 to the auction announcing the transaction.
 The policy atomically mints (and burns)
 three non-fungible tokens.
-One of then, __auction metadata token__,
+One of them, __auction metadata token__,
 is used to identify non-changeable information about the auction;
 The other two are so-called auction state tokens
 and are used to identify two auction's state outputs:
@@ -241,7 +241,7 @@ which are fixed when it is announced.
 data AuctionTerms = AuctionTerms
   { at'AuctionLot :: AssetClass
   -- ^ NFT being sold in the auction.
-  , at'SellerAddress :: Adddress
+  , at'SellerAddress :: Address
   -- ^ Seller's address (the payment part should be key-based,
   -- which will receive the proceeds of the auction (minus fees)
   -- if the auction lot is purchased,
@@ -261,7 +261,7 @@ data AuctionTerms = AuctionTerms
   -- At and after this time, the winning bidder forfeits its bidder deposit
   -- if the auction lot has not been purchased.
   , at'Cleanup :: POSIXTime
-  -- ^ Time at and after  which the remaining utxos in the auction
+  -- ^ Time at and after which the remaining utxos in the auction
   -- can be unconditionally cleaned up, returning all tokens
   -- in those utxos to their original owners before the auction.
   , at'AuctionFeePerDelegate :: Integer
@@ -280,8 +280,8 @@ data AuctionTerms = AuctionTerms
   }
 ```
 
-Auction terms are validated on-chain upon minting
-auction metadata and state tokens and cannot be changed.
+Auction terms are validated on-chain upon minting.
+Auction metadata and state tokens cannot be changed.
 Terms are considered to be valid if the following conditions hold:
 
 ```haskell
@@ -473,7 +473,7 @@ To discover the bidder-auction authorizations from the seller,
 query the seller's personal oracle address
 and filter out utxos that don't contain
 the seller's personal oracle token
-and/or don't relate to the auction based on `auctionId`
+and/or don't relate to the auction based on `auctionId`.
 
 Overall, this is a completely optional mechanism for the seller to
 communicate authorization to bidders for auction participation.
