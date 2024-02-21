@@ -4,7 +4,6 @@ module HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms (PAuctionTerms)
   , pbiddingPeriod
   , pcleanupPeriod
-  , ppenaltyPeriod
   , ppostBiddingPeriod
   , ppostPurchasePeriod
   , ppurchasePeriod
@@ -151,14 +150,6 @@ ppurchasePeriod = phoistAcyclic $
     pintervalFiniteClosedOpen
       # auctionTermsFields.biddingEnd
       # auctionTermsFields.purchaseDeadline
-
-ppenaltyPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
-ppenaltyPeriod = phoistAcyclic $
-  plam $ \auctionTerms -> P.do
-    auctionTermsFields <- pletFields @["purchaseDeadline", "cleanup"] auctionTerms
-    pintervalFiniteClosedOpen
-      # auctionTermsFields.purchaseDeadline
-      # auctionTermsFields.cleanup
 
 pcleanupPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
 pcleanupPeriod = phoistAcyclic $

@@ -33,7 +33,7 @@ import HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms
   , pbiddingPeriod
   , pcleanupPeriod
-  , ppenaltyPeriod
+  , ppostPurchasePeriod
   , ppurchasePeriod
   , ptotalAuctionFees
   )
@@ -416,10 +416,9 @@ pcheckSellerReclaims = phoistAcyclic $
     passert $(errCode AuctionEscrow'SellerReclaims'Error'UnexpectedTokensMintedBurned) $
       pfromData txInfoFields.mint #== mempty
 
-    -- This redeemer can only be used during
-    -- the penalty period.
+    -- This redeemer can only be used after the purchase deadline.
     passert $(errCode AuctionEscrow'SellerReclaims'Error'IncorrectValidityInterval) $
-      pcontains # (ppenaltyPeriod # auctionTerms) # txInfoFields.validRange
+      pcontains # (ppostPurchasePeriod # auctionTerms) # txInfoFields.validRange
 
     ------------------------------------------------------------------
     -- Check auction escrow state transition
