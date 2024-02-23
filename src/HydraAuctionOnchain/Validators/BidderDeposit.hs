@@ -3,6 +3,7 @@
 module HydraAuctionOnchain.Validators.BidderDeposit
   ( PBidderDepositRedeemer
       ( UseDepositWinnerRedeemer
+      , ClaimDepositSellerRedeemer
       , ReclaimDepositLoserRedeemer
       , ReclaimDepositAuctionConcludedRedeemer
       , ReclaimDepositCleanupRedeemer
@@ -26,6 +27,7 @@ import HydraAuctionOnchain.Types.AuctionTerms
   ( PAuctionTerms
   , pcleanupPeriod
   , ppostBiddingPeriod
+  , ppostPurchasePeriod
   )
 import HydraAuctionOnchain.Types.BidderInfo (PBidderInfo)
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
@@ -36,7 +38,7 @@ import HydraAuctionOnchain.Types.Tokens
   , ptxOutContainsStandingBidToken
   )
 import HydraAuctionOnchain.Validators.AuctionEscrow
-  ( PAuctionEscrowRedeemer (BidderBuysRedeemer)
+  ( PAuctionEscrowRedeemer (BidderBuysRedeemer, SellerReclaimsRedeemer)
   )
 import Plutarch.Api.V2 (PCurrencySymbol, PScriptContext, PTxInfo)
 import Plutarch.Extra.Interval (pcontains)
@@ -48,6 +50,7 @@ import Plutarch.Monadic qualified as P
 
 data PBidderDepositRedeemer (s :: S)
   = UseDepositWinnerRedeemer (Term s (PDataRecord '[]))
+  | ClaimDepositSellerRedeemer (Term s (PDataRecord '[]))
   | ReclaimDepositLoserRedeemer (Term s (PDataRecord '[]))
   | ReclaimDepositAuctionConcludedRedeemer (Term s (PDataRecord '[]))
   | ReclaimDepositCleanupRedeemer (Term s (PDataRecord '[]))
@@ -102,6 +105,14 @@ bidderDepositValidator = phoistAcyclic $
           # standingBidSh
           # auctionEscrowSh
           # auctionCs
+          # bidderInfo
+      ClaimDepositSellerRedeemer _ ->
+        pcheckClaimDepositSeller
+          # txInfo
+          # standingBidSh
+          # auctionEscrowSh
+          # auctionCs
+          # auctionTerms
           # bidderInfo
       ReclaimDepositLoserRedeemer _ ->
         pcheckReclaimDepositLoser
@@ -184,6 +195,78 @@ pcheckUseDepositWinner = phoistAcyclic $
     passert $(errCode BidderDeposit'UseDepositWinner'Error'InvalidAuctionEscrowRedeemer) $
       pinputSpentWithRedeemer
         # plam (\redeemer -> redeemer #== pcon (BidderBuysRedeemer pdnil))
+        # txInfo
+        # auctionEscrowInput
+
+    pcon PUnit
+
+----------------------------------------------------------------------
+-- ClaimDepositSeller
+--
+-- The bidder deposit is claimed by the seller if the auction lot has
+-- not been purchased before the purchase deadline.
+
+pcheckClaimDepositSeller
+  :: Term
+      s
+      ( PTxInfo
+          :--> PStandingBidScriptHash
+          :--> PAuctionEscrowScriptHash
+          :--> PCurrencySymbol
+          :--> PAuctionTerms
+          :--> PBidderInfo
+          :--> PUnit
+      )
+pcheckClaimDepositSeller = phoistAcyclic $
+  plam $ \txInfo standingBidSh auctionEscrowSh auctionCs auctionTerms bidderInfo -> P.do
+    -- This redeemer can only be used after the purchase deadline.
+    validRange <- plet $ pfield @"validRange" # txInfo
+    passert $(errCode BidderDeposit'ClaimDepositSeller'Error'IncorrectValidityInterval) $
+      pcontains # (ppostPurchasePeriod # auctionTerms) # validRange
+
+    -- There should be exactly one standing bid input.
+    standingBidInput <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ClaimDepositSeller'Error'MissingStandingBidInput)
+          (pfindUniqueInputWithScriptHash # pto standingBidSh # txInfo)
+
+    -- The standing bid input should contain the standing
+    -- bid token.
+    standingBidInputResolved <- plet $ pfield @"resolved" # standingBidInput
+    passert $(errCode BidderDeposit'ClaimDepositSeller'Error'StandingBidInputMissingToken) $
+      ptxOutContainsStandingBidToken # auctionCs # standingBidInputResolved
+
+    -- The standing bid input contains a datum that can be decoded
+    -- as a standing bid state.
+    bidState <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ClaimDepositSeller'Error'FailedToDecodeStandingBidState)
+          (pdecodeInlineDatum # standingBidInputResolved)
+
+    -- The bidder deposit's bidder won the auction.
+    passert $(errCode BidderDeposit'ClaimDepositSeller'Error'BidderNotWinner) $
+      pbidderWon # bidState # bidderInfo
+
+    -- There should be exactly one auction escrow input.
+    auctionEscrowInput <-
+      plet $
+        passertMaybe
+          $(errCode BidderDeposit'ClaimDepositSeller'Error'MissingAuctionEscrowInput)
+          (pfindUniqueInputWithScriptHash # pto auctionEscrowSh # txInfo)
+
+    -- The auction escrow input should contain the auction
+    -- escrow token.
+    auctionEscrowInputResolved <- plet $ pfield @"resolved" # auctionEscrowInput
+    passert $(errCode BidderDeposit'ClaimDepositSeller'Error'AuctionEscrowInputMissingToken) $
+      ptxOutContainsAuctionEscrowToken # auctionCs # auctionEscrowInputResolved
+
+    -- The auction escrow input is being spent with
+    -- the `SellerReclaims` redeemer.
+    passert $(errCode BidderDeposit'ClaimDepositSeller'Error'InvalidAuctionEscrowRedeemer) $
+      pinputSpentWithRedeemer
+        # plam (\redeemer -> redeemer #== pcon (SellerReclaimsRedeemer pdnil))
         # txInfo
         # auctionEscrowInput
 

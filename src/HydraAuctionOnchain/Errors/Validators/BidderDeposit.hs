@@ -18,6 +18,15 @@ data PBidderDepositError (s :: S)
   | BidderDeposit'UseDepositWinner'Error'MissingAuctionEscrowInput
   | BidderDeposit'UseDepositWinner'Error'AuctionEscrowInputMissingToken
   | BidderDeposit'UseDepositWinner'Error'InvalidAuctionEscrowRedeemer
+  | -- ClaimDepositSeller errors
+    BidderDeposit'ClaimDepositSeller'Error'IncorrectValidityInterval
+  | BidderDeposit'ClaimDepositSeller'Error'MissingStandingBidInput
+  | BidderDeposit'ClaimDepositSeller'Error'StandingBidInputMissingToken
+  | BidderDeposit'ClaimDepositSeller'Error'FailedToDecodeStandingBidState
+  | BidderDeposit'ClaimDepositSeller'Error'BidderNotWinner
+  | BidderDeposit'ClaimDepositSeller'Error'MissingAuctionEscrowInput
+  | BidderDeposit'ClaimDepositSeller'Error'AuctionEscrowInputMissingToken
+  | BidderDeposit'ClaimDepositSeller'Error'InvalidAuctionEscrowRedeemer
   | -- ReclaimDepositLoser errors
     BidderDeposit'ReclaimDepositLoser'Error'MissingStandingBidInput
   | BidderDeposit'ReclaimDepositLoser'Error'StandingBidInputMissingToken
