@@ -144,10 +144,10 @@ pcheckMoveToHydra = phoistAcyclic $
   plam $ \txInfo auctionTerms -> P.do
     txInfoFields <- pletFields @["signatories", "validRange"] txInfo
 
-    -- (STBD9) The transaction should be signed by all the delegates.
+    -- (STBD9) The transaction should be signed by at least one delegate.
     delegates <- plet $ pfield @"delegates" # auctionTerms
-    passert $(errCode StandingBid'MoveToHydra'Error'MissingDelegateSignatures) $
-      pall # plam (\sig -> ptxSignedBy # txInfoFields.signatories # sig) # delegates
+    passert $(errCode StandingBid'MoveToHydra'Error'MissingDelegateSignature) $
+      pany # plam (\sig -> ptxSignedBy # txInfoFields.signatories # sig) # delegates
 
     -- (STBD10) This redeemer can only be used during
     -- the bidding period.

@@ -18,7 +18,7 @@ data PStandingBidError (s :: S)
   | StandingBid'NewBid'Error'InvalidNewBidState
   | StandingBid'NewBid'Error'IncorrectValidityInterval
   | -- MoveToHydra errors
-    StandingBid'MoveToHydra'Error'MissingDelegateSignatures
+    StandingBid'MoveToHydra'Error'MissingDelegateSignature
   | StandingBid'MoveToHydra'Error'IncorrectValidityInterval
   | -- ConcludeAuction errors
     StandingBid'ConcludeAuction'Error'MissingAuctionEscrowInput
