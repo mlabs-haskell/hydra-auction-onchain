@@ -3,7 +3,8 @@ module HydraAuctionOnchain.Types.AuctionInfo
   ) where
 
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
-import Plutarch.Api.V2 (PAddress, PCurrencySymbol)
+import HydraAuctionOnchain.Types.DelegateInfo (PDelegateInfo)
+import Plutarch.Api.V2 (PAddress, PCurrencySymbol, PMaybeData)
 import Plutarch.DataRepr (PDataFields)
 
 newtype PAuctionInfo (s :: S)
@@ -13,6 +14,7 @@ newtype PAuctionInfo (s :: S)
           ( PDataRecord
               '[ "auctionId" ':= PCurrencySymbol
                , "auctionTerms" ':= PAuctionTerms
+               , "delegateInfo" ':= PMaybeData PDelegateInfo
                , "auctionEscrowAddr" ':= PAddress
                , "bidderDepositAddr" ':= PAddress
                , "feeEscrowAddr" ':= PAddress

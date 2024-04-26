@@ -120,6 +120,7 @@ library
     HydraAuctionOnchain.Types.AuctionTerms
     HydraAuctionOnchain.Types.BidderInfo
     HydraAuctionOnchain.Types.BidTerms
+    HydraAuctionOnchain.Types.DelegateInfo
     HydraAuctionOnchain.Types.Error
     HydraAuctionOnchain.Types.Scripts
     HydraAuctionOnchain.Types.StandingBidState
