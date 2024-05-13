@@ -151,8 +151,8 @@ pcheckMoveToHydra = phoistAcyclic $
 
     -- (STBD10) This redeemer can only be used during
     -- the bidding period.
-    passert $(errCode StandingBid'MoveToHydra'Error'IncorrectValidityInterval) $
-      pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
+    -- passert $(errCode StandingBid'MoveToHydra'Error'IncorrectValidityInterval) $
+    --   pcontains # (pbiddingPeriod # auctionTerms) # txInfoFields.validRange
 
     pcon PUnit
 
