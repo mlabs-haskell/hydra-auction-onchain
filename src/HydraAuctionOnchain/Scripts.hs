@@ -8,6 +8,10 @@ module HydraAuctionOnchain.Scripts
   , bidderDepositValidatorScript
   , bidderDepositValidatorUntyped
   , compileScript
+  , delegateGroupMintingPolicyScript
+  , delegateGroupMintingPolicyUntyped
+  , delegateGroupMetadataValidatorScript
+  , delegateGroupMetadataValidatorUntyped
   , standingBidValidatorScript
   , standingBidValidatorUntyped
   , writeScript
@@ -16,6 +20,7 @@ module HydraAuctionOnchain.Scripts
 import Data.Text (Text)
 import Data.Text qualified as T (unpack)
 import HydraAuctionOnchain.MintingPolicies.Auction (auctionMintingPolicy)
+import HydraAuctionOnchain.MintingPolicies.DelegateGroup (delegateGroupMintingPolicy)
 import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms)
 import HydraAuctionOnchain.Types.Scripts
   ( PAuctionEscrowScriptHash
@@ -25,6 +30,7 @@ import HydraAuctionOnchain.Types.Scripts
 import HydraAuctionOnchain.Validators.AuctionEscrow (auctionEscrowValidator)
 import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
 import HydraAuctionOnchain.Validators.BidderDeposit (bidderDepositValidator)
+import HydraAuctionOnchain.Validators.DelegateGroupMetadata (delegateGroupMetadataValidator)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
 import Plutarch (Config (Config), Script, TracingMode (DoTracing), compile)
 import Plutarch.Api.V2 (PCurrencySymbol, PMintingPolicy, PScriptHash, PTxOutRef, PValidator)
@@ -140,6 +146,42 @@ auctionMetadataValidatorUntyped = phoistAcyclic $
 
 auctionMetadataValidatorScript :: Script
 auctionMetadataValidatorScript = compileScript auctionMetadataValidatorUntyped
+
+----------------------------------------------------------------------
+-- DelegateGroup MP
+
+delegateGroupMintingPolicyUntyped
+  :: ClosedTerm
+      ( PAsData PScriptHash
+          :--> PAsData PTxOutRef
+          :--> PMintingPolicy
+      )
+delegateGroupMintingPolicyUntyped = phoistAcyclic $
+  plam $ \delegateGroupMetadataSh nonceOref redeemer ctx ->
+    popaque $
+      delegateGroupMintingPolicy
+        # pfromData delegateGroupMetadataSh
+        # pfromData nonceOref
+        # punsafeCoerce redeemer
+        # ctx
+
+delegateGroupMintingPolicyScript :: Script
+delegateGroupMintingPolicyScript = compileScript delegateGroupMintingPolicyUntyped
+
+----------------------------------------------------------------------
+-- DelegateGroupMetadata
+
+delegateGroupMetadataValidatorUntyped :: ClosedTerm PValidator
+delegateGroupMetadataValidatorUntyped = phoistAcyclic $
+  plam $ \datum redeemer ctx ->
+    popaque $
+      delegateGroupMetadataValidator
+        # punsafeCoerce datum
+        # punsafeCoerce redeemer
+        # ctx
+
+delegateGroupMetadataValidatorScript :: Script
+delegateGroupMetadataValidatorScript = compileScript delegateGroupMetadataValidatorUntyped
 
 --
 

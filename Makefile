@@ -31,4 +31,4 @@ bidder_deposit_validator:
 	cabal v2-run hydra-auction-onchain-exe -- --script bidder_deposit
 
 auction_metadata_validator:
-	cabal v2-run hydra-auction-onchain-exe -- --script metadata
+	cabal v2-run hydra-auction-onchain-exe -- --script auction_metadata

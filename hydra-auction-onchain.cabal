@@ -103,9 +103,11 @@ library
   import:          common-lang
   exposed-modules:
     HydraAuctionOnchain.Errors.MintingPolicies.Auction
+    HydraAuctionOnchain.Errors.MintingPolicies.DelegateGroup
     HydraAuctionOnchain.Errors.Types.AuctionTerms
     HydraAuctionOnchain.Errors.Validators.AuctionEscrow
     HydraAuctionOnchain.Errors.Validators.BidderDeposit
+    HydraAuctionOnchain.Errors.Validators.DelegateGroupMetadata
     HydraAuctionOnchain.Errors.Validators.StandingBid
     HydraAuctionOnchain.Helpers
     HydraAuctionOnchain.Lib.Address
@@ -114,12 +116,14 @@ library
     HydraAuctionOnchain.Lib.Serialization
     HydraAuctionOnchain.Lib.Value
     HydraAuctionOnchain.MintingPolicies.Auction
+    HydraAuctionOnchain.MintingPolicies.DelegateGroup
     HydraAuctionOnchain.Scripts
     HydraAuctionOnchain.Types.AuctionEscrowState
     HydraAuctionOnchain.Types.AuctionInfo
     HydraAuctionOnchain.Types.AuctionTerms
     HydraAuctionOnchain.Types.BidderInfo
     HydraAuctionOnchain.Types.BidTerms
+    HydraAuctionOnchain.Types.DelegateGroupInfo
     HydraAuctionOnchain.Types.DelegateInfo
     HydraAuctionOnchain.Types.Error
     HydraAuctionOnchain.Types.Scripts
@@ -128,6 +132,7 @@ library
     HydraAuctionOnchain.Validators.AuctionEscrow
     HydraAuctionOnchain.Validators.AuctionMetadata
     HydraAuctionOnchain.Validators.BidderDeposit
+    HydraAuctionOnchain.Validators.DelegateGroupMetadata
     HydraAuctionOnchain.Validators.StandingBid
 
   build-depends:

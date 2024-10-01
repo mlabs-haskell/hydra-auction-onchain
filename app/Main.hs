@@ -5,6 +5,8 @@ import HydraAuctionOnchain.Scripts
   , auctionMetadataValidatorUntyped
   , auctionMintingPolicyUntyped
   , bidderDepositValidatorUntyped
+  , delegateGroupMetadataValidatorUntyped
+  , delegateGroupMintingPolicyUntyped
   , standingBidValidatorUntyped
   , writeScript
   )
@@ -30,6 +32,8 @@ main =
       writeStandingBidValidator
       writeBidderDepositValidator
       writeAuctionMetadataValidator
+      writeDelegateGroupMintingPolicy
+      writeDelegateGroupMetadataValidator
     AuctionMintingPolicy ->
       writeAuctionMintingPolicy
     AuctionEscrowValidator ->
@@ -40,6 +44,10 @@ main =
       writeBidderDepositValidator
     AuctionMetadataValidator ->
       writeAuctionMetadataValidator
+    DelegateGroupMintingPolicy ->
+      writeDelegateGroupMintingPolicy
+    DelegateGroupMetadataValidator ->
+      writeDelegateGroupMetadataValidator
 
 writeAuctionMintingPolicy :: IO ()
 writeAuctionMintingPolicy =
@@ -76,6 +84,20 @@ writeAuctionMetadataValidator =
     "compiled/auction_metadata_validator.plutus"
     auctionMetadataValidatorUntyped
 
+writeDelegateGroupMintingPolicy :: IO ()
+writeDelegateGroupMintingPolicy =
+  writeScript
+    "Delegate group minting policy"
+    "compiled/delegate_group_minting_policy.plutus"
+    delegateGroupMintingPolicyUntyped
+
+writeDelegateGroupMetadataValidator :: IO ()
+writeDelegateGroupMetadataValidator =
+  writeScript
+    "Delegate group metadata validator"
+    "compiled/delegate_group_metadata_validator.plutus"
+    delegateGroupMetadataValidatorUntyped
+
 data ScriptToCompile
   = AllScripts
   | AuctionMintingPolicy
@@ -83,6 +105,8 @@ data ScriptToCompile
   | StandingBidValidator
   | BidderDepositValidator
   | AuctionMetadataValidator
+  | DelegateGroupMintingPolicy
+  | DelegateGroupMetadataValidator
   deriving stock (Show, Eq)
 
 toScript :: String -> Maybe ScriptToCompile
@@ -92,7 +116,9 @@ toScript = \case
   "auction_escrow" -> Just AuctionEscrowValidator
   "standing_bid" -> Just StandingBidValidator
   "bidder_deposit" -> Just BidderDepositValidator
-  "metadata" -> Just AuctionMetadataValidator
+  "auction_metadata" -> Just AuctionMetadataValidator
+  "delegate_group_mp" -> Just DelegateGroupMintingPolicy
+  "delegate_group_metadata" -> Just DelegateGroupMetadataValidator
   _ -> Nothing
 
 scriptToCompile :: Parser ScriptToCompile
