@@ -32,7 +32,7 @@ import HydraAuctionOnchain.Validators.AuctionMetadata (auctionMetadataValidator)
 import HydraAuctionOnchain.Validators.BidderDeposit (bidderDepositValidator)
 import HydraAuctionOnchain.Validators.DelegateGroupMetadata (delegateGroupMetadataValidator)
 import HydraAuctionOnchain.Validators.StandingBid (standingBidValidator)
-import Plutarch (Config (Config), Script, TracingMode (DoTracing), compile)
+import Plutarch (Config (Config), Script, TracingMode (DoTracingAndBinds), compile)
 import Plutarch.Api.V2 (PCurrencySymbol, PMintingPolicy, PScriptHash, PTxOutRef, PValidator)
 import Plutarch.Unsafe (punsafeCoerce)
 import Ply.Plutarch.TypedWriter (TypedWriter, writeTypedScript)
@@ -186,7 +186,7 @@ delegateGroupMetadataValidatorScript = compileScript delegateGroupMetadataValida
 --
 
 config :: Config
-config = Config DoTracing
+config = Config DoTracingAndBinds
 
 writeScript :: TypedWriter a => Text -> FilePath -> ClosedTerm a -> IO ()
 writeScript desc term = writeTypedScript config desc term
