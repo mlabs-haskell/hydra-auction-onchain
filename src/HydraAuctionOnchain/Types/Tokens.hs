@@ -1,12 +1,14 @@
 module HydraAuctionOnchain.Types.Tokens
   ( auctionEscrowTokenName
   , auctionMetadataTokenName
+  , delegateGroupTokenName
   , pauctionTokenBundleBurned
   , pauctionTokenBundleMinted
   , pauctionTokenBundleValueBurned
   , pauctionTokenBundleValueMinted
   , ptxOutContainsAuctionEscrowToken
   , ptxOutContainsAuctionMetadataToken
+  , ptxOutContainsDelegateGroupToken
   , ptxOutContainsStandingBidToken
   , standingBidTokenName
   ) where
@@ -35,25 +37,34 @@ auctionMetadataTokenName = pconstant "AUCTION_METADATA"
 standingBidTokenName :: Term s PTokenName
 standingBidTokenName = pconstant "STANDING_BID"
 
-ptxOutContainsAuctionToken :: Term s (PCurrencySymbol :--> PTokenName :--> PTxOut :--> PBool)
-ptxOutContainsAuctionToken = phoistAcyclic $
+-- | Delegate group token, identifying the true delegate group.
+delegateGroupTokenName :: Term s PTokenName
+delegateGroupTokenName = pconstant "DELEGATE_GROUP"
+
+ptxOutContainsToken :: Term s (PCurrencySymbol :--> PTokenName :--> PTxOut :--> PBool)
+ptxOutContainsToken = phoistAcyclic $
   plam $ \auctionCs tn txOut ->
     (pvalueOf # (pfield @"value" # txOut) # auctionCs # tn) #== 1
 
 ptxOutContainsAuctionMetadataToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
 ptxOutContainsAuctionMetadataToken = phoistAcyclic $
   plam $ \auctionCs txOut ->
-    ptxOutContainsAuctionToken # auctionCs # auctionMetadataTokenName # txOut
+    ptxOutContainsToken # auctionCs # auctionMetadataTokenName # txOut
 
 ptxOutContainsAuctionEscrowToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
 ptxOutContainsAuctionEscrowToken = phoistAcyclic $
   plam $ \auctionCs txOut ->
-    ptxOutContainsAuctionToken # auctionCs # auctionEscrowTokenName # txOut
+    ptxOutContainsToken # auctionCs # auctionEscrowTokenName # txOut
 
 ptxOutContainsStandingBidToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
 ptxOutContainsStandingBidToken = phoistAcyclic $
   plam $ \auctionCs txOut ->
-    ptxOutContainsAuctionToken # auctionCs # standingBidTokenName # txOut
+    ptxOutContainsToken # auctionCs # standingBidTokenName # txOut
+
+ptxOutContainsDelegateGroupToken :: Term s (PCurrencySymbol :--> PTxOut :--> PBool)
+ptxOutContainsDelegateGroupToken = phoistAcyclic $
+  plam $ \delegateGroupCs txOut ->
+    ptxOutContainsToken # delegateGroupCs # delegateGroupTokenName # txOut
 
 ----------------------------------------------------------------------
 -- Token bundle

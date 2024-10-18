@@ -15,7 +15,11 @@ import HydraAuctionOnchain.Helpers
   , putxoAddress
   )
 import HydraAuctionOnchain.Lib.ScriptContext (pinputSpentWithRedeemer)
-import HydraAuctionOnchain.Types.AuctionTerms (PAuctionTerms, pbiddingPeriod)
+import HydraAuctionOnchain.Types.AuctionTerms
+  ( PAuctionTerms
+  , pbiddingPeriod
+  , pprePurchasePeriod
+  )
 import HydraAuctionOnchain.Types.Error (errCode, passert, passertMaybe)
 import HydraAuctionOnchain.Types.StandingBidState (PStandingBidState, pvalidateNewBid)
 import HydraAuctionOnchain.Types.Tokens
@@ -128,11 +132,11 @@ pcheckNewBid = phoistAcyclic $
     passert $(errCode StandingBid'NewBid'Error'InvalidNewBidState) $
       pvalidateNewBid # auctionCs # auctionTerms # oldBidState # newBidState
 
-    -- (STBD8) This redeemer can only be used during
-    -- the bidding period.
+    -- (STBD8) This redeemer can only be used before
+    -- the bidding end time.
     txInfoValidRange <- plet $ pfield @"validRange" # txInfo
     passert $(errCode StandingBid'NewBid'Error'IncorrectValidityInterval) $
-      pcontains # (pbiddingPeriod # auctionTerms) # txInfoValidRange
+      pcontains # (pprePurchasePeriod # auctionTerms) # txInfoValidRange
 
     pcon PUnit
 
