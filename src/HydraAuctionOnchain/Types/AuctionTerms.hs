@@ -6,6 +6,7 @@ module HydraAuctionOnchain.Types.AuctionTerms
   , pcleanupPeriod
   , ppostBiddingPeriod
   , ppostPurchasePeriod
+  , pprePurchasePeriod
   , ppurchasePeriod
   , ptotalAuctionFees
   , pvalidateAuctionTerms
@@ -27,7 +28,7 @@ import Plutarch.Api.V2
   )
 import Plutarch.DataRepr (PDataFields)
 import Plutarch.Extra.Field (pletAll)
-import Plutarch.Extra.Interval qualified as Interval (pfrom)
+import Plutarch.Extra.Interval qualified as Interval (pfrom, pto)
 import Plutarch.Extra.Maybe (pisJust)
 import Plutarch.Extra.Value (padaOf)
 import Plutarch.Monadic qualified as P
@@ -160,6 +161,11 @@ ppostBiddingPeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
 ppostBiddingPeriod = phoistAcyclic $
   plam $ \auctionTerms ->
     Interval.pfrom #$ pfield @"biddingEnd" # auctionTerms
+
+pprePurchasePeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
+pprePurchasePeriod = phoistAcyclic $
+  plam $ \auctionTerms ->
+    Interval.pto #$ pfield @"biddingEnd" # auctionTerms
 
 ppostPurchasePeriod :: Term s (PAuctionTerms :--> PPOSIXTimeRange)
 ppostPurchasePeriod = phoistAcyclic $
